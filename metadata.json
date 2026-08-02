@@ -1,0 +1,6 @@
+{
+  "name": "Final Sanctuary Texas Hold'em",
+  "description": "林俊杰 Final Sanctuary 巡演主题德州扑克游戏，采用iOS玻璃质感与流光舞台灯光特效，配以城市专属筹码及演唱会视觉扑克牌。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
