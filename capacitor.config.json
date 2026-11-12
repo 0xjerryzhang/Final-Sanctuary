@@ -1,0 +1,15 @@
+{
+  "appId": "com.finalsanctuary.poker",
+  "appName": "圣所德州",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "iosScheme": "capacitor",
+    "allowNavigation": ["*"]
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#070212",
+    "preferredContentMode": "mobile"
+  }
+}

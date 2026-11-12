@@ -1,0 +1,44 @@
+[
+  {
+    "id": "jj_user_mwdgp5u8_a4kd",
+    "username": "圣所乐迷",
+    "nickname": "圣所乐迷",
+    "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+    "chips": 130700,
+    "level": 1,
+    "exp": 0,
+    "wins": 0,
+    "losses": 0,
+    "handsPlayed": 0,
+    "createdAt": 1794482752976,
+    "updatedAt": 1794482753412
+  },
+  {
+    "id": "test_u1",
+    "username": "PlayerOne",
+    "nickname": "PlayerOne",
+    "avatar": "🎤",
+    "chips": 130695,
+    "level": 1,
+    "exp": 0,
+    "wins": 0,
+    "losses": 1,
+    "handsPlayed": 1,
+    "createdAt": 1794485597282,
+    "updatedAt": 1794485598144
+  },
+  {
+    "id": "test_u2",
+    "username": "PlayerTwo",
+    "nickname": "PlayerTwo",
+    "avatar": "🎤",
+    "chips": 130705,
+    "level": 1,
+    "exp": 0,
+    "wins": 1,
+    "losses": 0,
+    "handsPlayed": 1,
+    "createdAt": 1794485597283,
+    "updatedAt": 1794485598144
+  }
+]

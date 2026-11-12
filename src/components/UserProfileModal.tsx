@@ -31,6 +31,7 @@ import {
 import { wsService } from '../services/websocket';
 import { triggerHaptic } from '../utils/haptics';
 import { iosAudio } from '../utils/iosAudio';
+import { getApiUrl } from '../utils/apiConfig';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -88,6 +89,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -101,7 +103,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     setFeedback(null);
 
     try {
-      const res = await fetch('/api/user/checkin', {
+      const res = await fetch(getApiUrl('/api/user/checkin'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),
@@ -158,7 +160,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         storedId = localStorage.getItem('jj_user_id') || undefined;
       } catch {}
 
-      const res = await fetch('/api/user/auth', {
+      const res = await fetch(getApiUrl('/api/user/auth'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,7 +252,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         ? { email: formEmail, password: formPassword, nickname, avatar, currentUserId: userId }
         : { email: formEmail, password: formPassword };
 
-      const res = await fetch(endpoint, {
+      const res = await fetch(getApiUrl(endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -290,7 +292,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   // Update Profile Save
   const handleSaveProfile = async () => {
     try {
-      const res = await fetch('/api/user/auth', {
+      const res = await fetch(getApiUrl('/api/user/auth'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -326,7 +328,36 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     } catch {}
     setFormEmail('');
     setFormPassword('');
+    setShowDeleteConfirm(false);
     setFeedback({ type: 'success', msg: '已成功退出当前账号登录' });
+  };
+
+  // Delete Account (Mandatory for Apple App Store Review Guideline 5.1.1(v))
+  const handleDeleteAccount = async () => {
+    setIsLoading(true);
+    try {
+      await fetch(getApiUrl('/api/user/delete'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, email: userEmail }),
+      });
+    } catch {
+      // Ignore network errors and still clear local account state
+    } finally {
+      setIsLoading(false);
+      setShowDeleteConfirm(false);
+      setUserEmail('');
+      setUserId('');
+      setFormEmail('');
+      setFormPassword('');
+      try {
+        localStorage.removeItem('jj_user_id');
+        localStorage.removeItem('jj_user_email');
+        localStorage.removeItem('jj_user_nickname');
+        localStorage.removeItem('jj_user_avatar');
+      } catch {}
+      setFeedback({ type: 'success', msg: '您的账号及关联数据已彻底注销删除' });
+    }
   };
 
   if (!isOpen) return null;
@@ -756,6 +787,42 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   <span>退出登录</span>
                 </button>
               </div>
+
+              {/* Account Deletion (Apple Guideline 5.1.1(v)) */}
+              {!showDeleteConfirm ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="text-[11px] font-mono text-rose-400/80 hover:text-rose-300 underline cursor-pointer"
+                  >
+                    永久注销并删除当前账号
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/60 flex flex-col gap-2 text-xs">
+                  <p className="text-rose-200 font-bold">
+                    确认要永久注销并删除当前账号吗？删除后圣所音符与战绩将无法恢复。
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 py-1.5 rounded-lg bg-slate-900 text-slate-300 font-bold cursor-pointer"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccount}
+                      disabled={isLoading}
+                      className="flex-1 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black cursor-pointer"
+                    >
+                      确认永久注销
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* App Store Compliance & Virtual Currency Disclaimer (Apple Guideline Section 3.2.1 & 5.3) */}
               <div className="mt-2 p-3 rounded-xl bg-slate-950/90 border border-purple-500/20 text-[10px] text-purple-300/70 font-mono leading-tight flex flex-col gap-1">

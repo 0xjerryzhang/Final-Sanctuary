@@ -47,7 +47,7 @@ import { UserProfileModal } from './UserProfileModal';
 import { wsService } from '../services/websocket';
 
 interface CyberStartScreenProps {
-  onStartGame: (stage: AlbumStage) => void;
+  onStartGame: (stage: AlbumStage, isOnline?: boolean, roomData?: any) => void;
   currentSong: ConcertSong;
   setCurrentSong: (song: ConcertSong) => void;
 }
@@ -346,9 +346,9 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
         isOpen={isLobbyOpen}
         onClose={() => setIsLobbyOpen(false)}
         defaultStage={selectedStage}
-        onStartOnlineGame={(stage) => {
+        onStartOnlineGame={(stage, roomData) => {
           setIsLobbyOpen(false);
-          onStartGame(stage);
+          onStartGame(stage, true, roomData);
         }}
       />
 

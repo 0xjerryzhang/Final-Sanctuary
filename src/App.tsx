@@ -11,11 +11,14 @@ import { NetworkNotifier } from './components/NetworkNotifier';
 import { JJ_SONGS } from './components/StageControls';
 import { ConcertSong, StageLightMode } from './types';
 import { JJ_ALBUM_STAGES, AlbumStage } from './data/albumStages';
+import { wsService } from './services/websocket';
 import { AnimatePresence, motion } from 'motion/react';
 
 export default function App() {
   const [viewState, setViewState] = useState<'splash' | 'launcher' | 'game'>('splash');
   const [selectedStage, setSelectedStage] = useState<AlbumStage>(JJ_ALBUM_STAGES[0]);
+  const [isOnlineMode, setIsOnlineMode] = useState(false);
+  const [onlineRoomData, setOnlineRoomData] = useState<any>(null);
   const [currentSong, setCurrentSong] = useState<ConcertSong>(JJ_SONGS[0]);
   const [lightMode, setLightMode] = useState<StageLightMode>('purple');
   const [laserActive, setLaserActive] = useState(false);
@@ -56,12 +59,19 @@ export default function App() {
     setViewState('launcher');
   };
 
-  const handleStartGame = (stage: AlbumStage) => {
+  const handleStartGame = (stage: AlbumStage, isOnline: boolean = false, roomData?: any) => {
     setSelectedStage(stage);
+    setIsOnlineMode(isOnline);
+    setOnlineRoomData(roomData || null);
     setViewState('game');
   };
 
   const handleReturnToLauncher = () => {
+    if (isOnlineMode) {
+      wsService.leaveRoom();
+    }
+    setIsOnlineMode(false);
+    setOnlineRoomData(null);
     setViewState('launcher');
   };
 
@@ -122,6 +132,8 @@ export default function App() {
               encoreActive={encoreActive}
               setEncoreActive={setEncoreActive}
               selectedStage={selectedStage}
+              isOnlineMode={isOnlineMode}
+              onlineRoomData={onlineRoomData}
               onReturnToLauncher={handleReturnToLauncher}
             />
           </motion.div>

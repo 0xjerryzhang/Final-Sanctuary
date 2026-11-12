@@ -14,7 +14,8 @@ import { FlippableCard } from './FlippableCard';
 import { FloatingStageBar } from './StageControls';
 import { MetallicPokerChip } from './MetallicPokerChip';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, RotateCcw, Play, HelpCircle, Disc, ChevronUp, ChevronDown, LogOut, ArrowRight, Award, ClipboardList, Menu, Eye, EyeOff, Music, Pause, SkipForward, Sparkles, Wand2, MessageSquare, Send, X } from 'lucide-react';
+import { Trophy, RotateCcw, Play, HelpCircle, Disc, ChevronUp, ChevronDown, LogOut, ArrowRight, Award, ClipboardList, Menu, Eye, EyeOff, Music, Pause, SkipForward, Sparkles, Wand2, MessageSquare, Send, X, Globe, Clock } from 'lucide-react';
+import { wsService } from '../services/websocket';
 
 interface ChatMessage {
   id: string;
@@ -38,6 +39,8 @@ interface GameTableProps {
   encoreActive: boolean;
   setEncoreActive: (v: boolean) => void;
   selectedStage?: AlbumStage;
+  isOnlineMode?: boolean;
+  onlineRoomData?: any;
   onReturnToLauncher?: () => void;
 }
 
@@ -95,11 +98,17 @@ export const GameTable: React.FC<GameTableProps> = ({
   encoreActive,
   setEncoreActive,
   selectedStage,
+  isOnlineMode = false,
+  onlineRoomData,
   onReturnToLauncher,
 }) => {
   const START_CHIPS = selectedStage?.startChips ?? DEFAULT_START_CHIPS;
   const BIG_BLIND = selectedStage?.bigBlind ?? DEFAULT_BIG_BLIND;
   const SMALL_BLIND = selectedStage?.smallBlind ?? DEFAULT_SMALL_BLIND;
+  const [turnDeadline, setTurnDeadline] = useState<number>(0);
+  const [turnSecondsLeft, setTurnSecondsLeft] = useState<number>(0);
+  const prevHandCountRef = useRef<number>(0);
+  const prevRoundRef = useRef<Round>('Waiting');
 
   // Game state
   const [players, setPlayers] = useState<Player[]>([]);
@@ -152,6 +161,13 @@ export const GameTable: React.FC<GameTableProps> = ({
     const content = (textToSend || chatInput).trim();
     if (!content) return;
 
+    if (isOnlineMode) {
+      wsService.sendChat(content);
+      if (!textToSend) setChatInput('');
+      triggerHaptic('light');
+      return;
+    }
+
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
@@ -203,10 +219,152 @@ export const GameTable: React.FC<GameTableProps> = ({
 
   const botActionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize Players
+  // Apply authoritative server state and rotate seats so local player is always Seat 0
+  const applyServerGameState = (srv: any) => {
+    if (!srv || ! Array.isArray(srv.players) || srv.players.length === 0) return;
+
+    const total = srv.players.length;
+    const myIdx = srv.players.findIndex(
+      (p: any) =>
+        p.id === srv.mySeatId ||
+        p.id === wsService.playerId ||
+        (wsService.userId && p.userId === wsService.userId)
+    );
+    const offset = myIdx >= 0 ? myIdx : 0;
+
+    const rotatedPlayers: Player[] = [];
+    for (let i = 0; i < total; i++) {
+      const origP = srv.players[(offset + i) % total];
+      rotatedPlayers.push({
+        id: origP.id,
+        name: origP.name,
+        avatar: origP.avatar || '🎤',
+        chips: origP.chips,
+        currentBet: origP.currentBet || 0,
+        cards: origP.cards || [],
+        isFolded: !!origP.isFolded,
+        isAllIn: !!origP.isAllIn,
+        isBot: !!origP.isBot,
+        lastAction: origP.lastAction || '',
+        handDescription: origP.handDescription,
+      });
+    }
+
+    const rotIdx = (idx: number) => (idx >= 0 ? (idx - offset + total) % total : -1);
+
+    setPlayers(rotatedPlayers);
+    setCommunityCards(srv.communityCards || []);
+    setPot(srv.pot || 0);
+    setCurrentMaxBet(srv.currentMaxBet || 0);
+    setRound(srv.round || 'Waiting');
+    setActivePlayerIndex(rotIdx(srv.activePlayerIndex));
+    setDealerIndex(rotIdx(srv.dealerIndex));
+    setSbIndex(rotIdx(srv.sbIndex));
+    setBbIndex(rotIdx(srv.bbIndex));
+    setWinnerIds(srv.winnerIds || []);
+    setWinningDescription(srv.winningDescription || '');
+    setTurnDeadline(srv.turnDeadline || 0);
+
+    if (srv.toastMsg) {
+      setToastMsg(srv.toastMsg);
+    }
+
+    // Detect newly started hand
+    if (typeof srv.handCount === 'number' && srv.handCount !== prevHandCountRef.current) {
+      prevHandCountRef.current = srv.handCount;
+      setHandCount(srv.handCount);
+      setShowRoundModal(false);
+      setShowRaisePanel(false);
+      setIsCardsFlipped(false);
+      setRaiseSliderVal((srv.bigBlind || BIG_BLIND) * 2);
+      setIsDealing(true);
+      setTimeout(() => setIsDealing(false), 450);
+    }
+
+    // Detect transition to Showdown
+    if (srv.round === 'Showdown' && prevRoundRef.current !== 'Showdown') {
+      const mySeat = rotatedPlayers[0];
+      if (mySeat && Array.isArray(srv.winnerIds) && srv.winnerIds.includes(mySeat.id)) {
+        setUserWins(prev => prev + 1);
+        triggerHaptic('win');
+        iosAudio.playWinFanfare();
+      } else {
+        iosAudio.playChipSound();
+      }
+      if (mySeat?.handDescription) {
+        setUserBestHand(mySeat.handDescription);
+      }
+      setShowRoundModal(true);
+      setEncoreActive(true);
+      setTimeout(() => setEncoreActive(false), 2500);
+    }
+    prevRoundRef.current = srv.round;
+  };
+
+  // Subscribe to online mode WebSocket updates
   useEffect(() => {
-    resetWholeSession();
-  }, []);
+    if (!isOnlineMode) {
+      resetWholeSession();
+      return;
+    }
+
+    wsService.connect();
+    setChatMessages([
+      {
+        id: 'sys_online',
+        senderName: '圣所联机荷官',
+        avatar: '🌐',
+        text: `已进入实时联机房间【${onlineRoomData?.roomName || 'Final Sanctuary'}】，底牌由服务端加密派发！`,
+        isSystem: true,
+        timestamp: 'LIVE',
+      },
+    ]);
+
+    if (wsService.lastGameState) {
+      applyServerGameState(wsService.lastGameState);
+    }
+    wsService.requestGameState();
+
+    const unsub = wsService.subscribe((event) => {
+      if (event.type === 'GAME_STATE' && event.data) {
+        applyServerGameState(event.data);
+      } else if (event.type === 'NEW_CHAT_MESSAGE' && event.data) {
+        const d = event.data;
+        const now = new Date(d.timestamp || Date.now());
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        setChatMessages(prev => [
+          ...prev.slice(-30),
+          {
+            id: d.id || Date.now().toString(),
+            senderName: d.senderName || '乐迷牌友',
+            avatar: d.avatar || '🎤',
+            text: d.text || '',
+            isUser: d.senderId === wsService.playerId,
+            timestamp: timeStr,
+          },
+        ]);
+      }
+    });
+
+    return () => {
+      unsub();
+    };
+  }, [isOnlineMode]);
+
+  // Countdown ticker for online turn timer
+  useEffect(() => {
+    if (!isOnlineMode || !turnDeadline || round === 'Waiting' || round === 'Showdown') {
+      setTurnSecondsLeft(0);
+      return;
+    }
+    const updateTimer = () => {
+      const rem = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000));
+      setTurnSecondsLeft(rem);
+    };
+    updateTimer();
+    const timer = setInterval(updateTimer, 500);
+    return () => clearInterval(timer);
+  }, [isOnlineMode, turnDeadline, round]);
 
   const resetWholeSession = () => {
     const initPlayers: Player[] = [
@@ -299,8 +457,9 @@ export const GameTable: React.FC<GameTableProps> = ({
     }
   };
 
-  // Game loop
+  // Game loop (Single-player mode only; Online mode is server-authoritative)
   useEffect(() => {
+    if (isOnlineMode) return;
     if (round === 'Waiting' || round === 'Showdown' || activePlayerIndex === -1) return;
 
     const activePlayers = players.filter(p => !p.isFolded);
@@ -404,6 +563,12 @@ export const GameTable: React.FC<GameTableProps> = ({
 
   // Start Next Round (Multi-round Support)
   const startNextRound = () => {
+    if (isOnlineMode) {
+      setShowRoundModal(false);
+      wsService.startNextHand();
+      return;
+    }
+
     const newDeck = createDeck();
     setCommunityCards([]);
     setWinnerIds([]);
@@ -499,6 +664,13 @@ export const GameTable: React.FC<GameTableProps> = ({
   };
 
   const handlePlayerCheck = (idx: number) => {
+    if (isOnlineMode && idx === 0) {
+      triggerHaptic('light');
+      iosAudio.playClickSound();
+      wsService.sendGameAction('check');
+      return;
+    }
+
     const p = players[idx];
     setToastMsg(`🎤 [过牌] ${p.name} 选择过牌。`);
     if (p.isBot) triggerBotSpeech(p.id, 'check');
@@ -513,6 +685,13 @@ export const GameTable: React.FC<GameTableProps> = ({
   };
 
   const handlePlayerCall = (idx: number) => {
+    if (isOnlineMode && idx === 0) {
+      triggerHaptic('medium');
+      iosAudio.playChipSound();
+      wsService.sendGameAction('call');
+      return;
+    }
+
     const p = players[idx];
     const toCall = currentMaxBet - p.currentBet;
     const actualCall = Math.min(p.chips, toCall);
@@ -544,6 +723,14 @@ export const GameTable: React.FC<GameTableProps> = ({
   };
 
   const handlePlayerRaise = (idx: number, raiseTotalAmount: number) => {
+    if (isOnlineMode && idx === 0) {
+      triggerHaptic('heavy');
+      iosAudio.playChipSound();
+      setShowRaisePanel(false);
+      wsService.sendGameAction('raise', raiseTotalAmount);
+      return;
+    }
+
     const p = players[idx];
     const extraChipsNeeded = raiseTotalAmount - p.currentBet;
     const actualRaise = Math.min(p.chips, extraChipsNeeded);
@@ -577,6 +764,13 @@ export const GameTable: React.FC<GameTableProps> = ({
   };
 
   const handlePlayerFold = (idx: number) => {
+    if (isOnlineMode && idx === 0) {
+      triggerHaptic('light');
+      iosAudio.playFoldSound();
+      wsService.sendGameAction('fold');
+      return;
+    }
+
     const p = players[idx];
     setToastMsg(`💨 [弃牌] ${p.name} 弃牌。`);
     if (p.isBot) triggerBotSpeech(p.id, 'fold');
@@ -591,6 +785,13 @@ export const GameTable: React.FC<GameTableProps> = ({
   };
 
   const handlePlayerAllIn = (idx: number) => {
+    if (isOnlineMode && idx === 0) {
+      triggerHaptic('warning');
+      iosAudio.playChipSound();
+      wsService.sendGameAction('allin');
+      return;
+    }
+
     const p = players[idx];
     const allInAmt = p.chips;
     const totalBet = p.currentBet + allInAmt;
@@ -802,11 +1003,12 @@ export const GameTable: React.FC<GameTableProps> = ({
 
         {/* Center: Cyber Neon Pill Badge */}
         <div className="bg-gradient-to-r from-slate-950 via-purple-950/90 to-slate-950 border-2 border-purple-400/90 px-3.5 sm:px-5 py-1 rounded-full shadow-[0_0_20px_rgba(168,85,247,0.5)] flex flex-col items-center justify-center">
-          <span className="text-xs sm:text-sm font-black text-white font-mono tracking-wider text-shadow-glow-cyan">
-            {selectedStage ? `${selectedStage.smallBlind}/${selectedStage.bigBlind} ${selectedStage.name}` : '10/20 FINAL SANCTUARY GLOBAL POKER'}
+          <span className="text-xs sm:text-sm font-black text-white font-mono tracking-wider text-shadow-glow-cyan flex items-center gap-1.5">
+            {isOnlineMode && <Globe className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />}
+            <span>{selectedStage ? `${selectedStage.smallBlind}/${selectedStage.bigBlind} ${selectedStage.name}` : '10/20 FINAL SANCTUARY GLOBAL POKER'}</span>
           </span>
           <span className="text-[8px] sm:text-[9px] font-mono font-bold text-fuchsia-300 uppercase tracking-widest -mt-0.5">
-            {selectedStage?.badgeText || 'FINAL SANCTUARY STADIUM'}
+            {isOnlineMode ? `ONLINE LIVE · ${onlineRoomData?.roomName || '实时联机对战'}` : (selectedStage?.badgeText || 'FINAL SANCTUARY STADIUM')}
           </span>
         </div>
 
@@ -960,6 +1162,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               player={players[2]}
               playerIdx={2}
               dealerIndex={dealerIndex}
+              totalPlayers={players.length}
               isActive={activePlayerIndex === 2}
               isWinner={winnerIds.includes(players[2].id)}
               isDealer={dealerIndex === 2}
@@ -977,6 +1180,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               player={players[3]}
               playerIdx={3}
               dealerIndex={dealerIndex}
+              totalPlayers={players.length}
               isActive={activePlayerIndex === 3}
               isWinner={winnerIds.includes(players[3].id)}
               isDealer={dealerIndex === 3}
@@ -995,6 +1199,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               player={players[1]}
               playerIdx={1}
               dealerIndex={dealerIndex}
+              totalPlayers={players.length}
               isActive={activePlayerIndex === 1}
               isWinner={winnerIds.includes(players[1].id)}
               isDealer={dealerIndex === 1}
@@ -1063,6 +1268,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               player={players[4]}
               playerIdx={4}
               dealerIndex={dealerIndex}
+              totalPlayers={players.length}
               isActive={activePlayerIndex === 4}
               isWinner={winnerIds.includes(players[4].id)}
               isDealer={dealerIndex === 4}
@@ -1101,7 +1307,8 @@ export const GameTable: React.FC<GameTableProps> = ({
           )}
 
           {myPlayer && (() => {
-            const myPosInfo = getTexasPosition(0, dealerIndex, 5);
+            const myPosInfo = getTexasPosition(0, dealerIndex, players.length || 5);
+            const isAvatarImage = myPlayer.avatar && (myPlayer.avatar.startsWith('http') || myPlayer.avatar.startsWith('data:image'));
             return (
               <div className="relative flex flex-col items-center">
                 {/* Table Badge */}
@@ -1113,7 +1320,11 @@ export const GameTable: React.FC<GameTableProps> = ({
                   </span>
 
                   <div className="flex items-center gap-1">
-                    <span className="text-xs">🎤</span>
+                    {isAvatarImage ? (
+                      <img src={myPlayer.avatar} alt={myPlayer.name} className="w-4 h-4 rounded-full object-cover border border-amber-300" />
+                    ) : (
+                      <span className="text-xs">{myPlayer.avatar || '🎤'}</span>
+                    )}
                     <span className="text-[10px] sm:text-xs font-black text-white uppercase tracking-wider">
                       {myPlayer.name} ({myPlayer.lastAction || '在圈'})
                     </span>
@@ -1122,6 +1333,13 @@ export const GameTable: React.FC<GameTableProps> = ({
                   <span className="text-[10px] sm:text-xs font-mono font-black text-amber-300">
                     💰 {myPlayer.chips}
                   </span>
+
+                  {isOnlineMode && turnSecondsLeft > 0 && isMyTurn && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-mono font-black flex items-center gap-0.5">
+                      <Clock className="w-2.5 h-2.5" />
+                      {turnSecondsLeft}s
+                    </span>
+                  )}
                 </div>
 
                 {/* Chips on felt with micro levitation */}
@@ -1694,8 +1912,12 @@ export const GameTable: React.FC<GameTableProps> = ({
                       </div>
                     ) : (
                       <div className={`flex gap-2 max-w-[85%] ${msg.isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                        <div className="w-7 h-7 rounded-full bg-slate-900 border border-amber-400/60 flex items-center justify-center text-xs flex-shrink-0 shadow">
-                          {msg.avatar}
+                        <div className="w-7 h-7 rounded-full bg-slate-900 border border-amber-400/60 flex items-center justify-center text-xs flex-shrink-0 shadow overflow-hidden">
+                          {msg.avatar && (msg.avatar.startsWith('http') || msg.avatar.startsWith('data:image')) ? (
+                            <img src={msg.avatar} alt={msg.senderName} className="w-full h-full object-cover" />
+                          ) : (
+                            msg.avatar
+                          )}
                         </div>
                         <div className="flex flex-col">
                           <div className={`flex items-center gap-1.5 mb-0.5 ${msg.isUser ? 'justify-end' : 'justify-start'}`}>
@@ -1764,7 +1986,13 @@ export const GameTable: React.FC<GameTableProps> = ({
 
 // Sub-component for clean Table Player Seat rendering
 export const getTexasPosition = (playerIdx: number, dealerIndex: number, totalPlayers: number = 5) => {
-  const offset = (playerIdx - dealerIndex + totalPlayers) % totalPlayers;
+  const safeTotal = Math.max(2, totalPlayers);
+  const offset = (playerIdx - dealerIndex + safeTotal) % safeTotal;
+  if (safeTotal === 2) {
+    return offset === 0
+      ? { code: 'BTN/SB', label: '庄位兼小盲', badgeStyle: 'bg-amber-500 text-slate-950 font-black border border-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.8)]' }
+      : { code: 'BB', label: '大盲 (Big Blind)', badgeStyle: 'bg-cyan-600 text-white font-bold border border-cyan-300 shadow-[0_0_8px_rgba(6,182,212,0.8)]' };
+  }
   switch (offset) {
     case 0:
       return { code: 'BTN', label: '庄位 (Button)', badgeStyle: 'bg-amber-500 text-slate-950 font-black border border-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.8)]' };
@@ -1785,6 +2013,7 @@ interface TablePlayerSeatProps {
   player: Player;
   playerIdx: number;
   dealerIndex: number;
+  totalPlayers?: number;
   isActive: boolean;
   isWinner: boolean;
   isDealer: boolean;
@@ -1799,6 +2028,7 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
   player,
   playerIdx,
   dealerIndex,
+  totalPlayers = 5,
   isActive,
   isWinner,
   isDealer,
@@ -1809,14 +2039,15 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
 }) => {
   const isFolded = player.isFolded;
   const fullCards = [...player.cards, ...communityCards];
-  const seatEval = (player.cards.length >= 2 && round !== 'Waiting' && !isFolded) 
+  const seatEval = (player.cards.length >= 2 && (round === 'Showdown' || isWinner) && !isFolded) 
     ? evaluate7CardHand(fullCards) 
     : null;
 
-  const posInfo = getTexasPosition(playerIdx, dealerIndex, 5);
+  const posInfo = getTexasPosition(playerIdx, dealerIndex, totalPlayers);
 
   const isRightSide = position ? position.includes('right') : false;
   const isLeftSide = position ? position.includes('left') : false;
+  const isAvatarImg = player.avatar && (player.avatar.startsWith('http') || player.avatar.startsWith('data:image'));
 
   return (
     <div className={`relative flex flex-col ${isRightSide ? 'items-end origin-right' : isLeftSide ? 'items-start origin-left' : 'items-center origin-center'} select-none shrink-0 z-20 max-w-full`}>
@@ -1835,10 +2066,14 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
         
         {/* Left: Avatar Circle with Position / Dealer Badge */}
         <div className="relative flex-shrink-0">
-          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-900 border-2 flex items-center justify-center text-xs sm:text-sm shadow-inner ${
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-900 border-2 flex items-center justify-center text-xs sm:text-sm shadow-inner overflow-hidden ${
             isActive ? 'border-purple-300 bg-purple-900' : 'border-amber-400/60'
           }`}>
-            {player.avatar}
+            {isAvatarImg ? (
+              <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" />
+            ) : (
+              player.avatar
+            )}
           </div>
 
           {/* Position Badge Tag */}
