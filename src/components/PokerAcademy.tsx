@@ -19,14 +19,12 @@ const MiniCard: React.FC<{ cardStr: string }> = ({ cardStr }) => {
 
   return (
     <div
-      className={`w-6 h-8 rounded-md border flex flex-col items-center justify-between p-0.5 font-mono text-[10px] font-black leading-none shrink-0 shadow-sm ${
-        isRed
-          ? 'border-rose-500/60 text-rose-300 bg-gradient-to-b from-rose-950/50 to-slate-950'
-          : 'border-cyan-400/60 text-cyan-200 bg-gradient-to-b from-slate-900 to-slate-950'
+      className={`w-6 h-8.5 rounded-md border border-slate-300 bg-white flex flex-col items-center justify-between p-0.5 font-mono text-[10px] font-black leading-none shrink-0 shadow-sm ${
+        isRed ? 'text-[#DC2626]' : 'text-[#0F172A]'
       }`}
     >
-      <span className="self-start text-[8px] opacity-90">{val}</span>
-      <span className="text-[10px] font-sans">{suit}</span>
+      <span className="self-start text-[9px] font-black tracking-tighter tabular-nums">{val}</span>
+      <span className="text-xs font-sans leading-none">{suit}</span>
     </div>
   );
 };

@@ -8,9 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Play,
   Shield,
-  Volume2,
-  VolumeX,
-  Radio,
   User,
   Globe,
   Calendar,
@@ -32,18 +29,15 @@ import { wsService } from '../services/websocket';
 
 interface CyberStartScreenProps {
   onStartGame: (stage: AlbumStage, isOnline?: boolean, roomData?: any) => void;
-  currentSong: ConcertSong;
-  setCurrentSong: (song: ConcertSong) => void;
+  currentSong?: ConcertSong;
+  setCurrentSong?: (song: ConcertSong) => void;
 }
 
 export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
   onStartGame,
-  currentSong,
 }) => {
   const [selectedStage, setSelectedStage] = useState<AlbumStage>(JJ_ALBUM_STAGES[0]);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(true);
   const [mainCategory, setMainCategory] = useState<'battle' | 'academy'>('battle');
-  const [audioBars, setAudioBars] = useState<number[]>([40, 75, 25, 90, 60, 85, 30, 95]);
 
   // Real-time Matchmaking Lobby State
   const [isLobbyOpen, setIsLobbyOpen] = useState(false);
@@ -60,14 +54,6 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
     });
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (!isPlayingAudio) return;
-    const interval = setInterval(() => {
-      setAudioBars(Array.from({ length: 8 }, () => Math.floor(Math.random() * 80) + 15));
-    }, 180);
-    return () => clearInterval(interval);
-  }, [isPlayingAudio]);
 
   return (
     <div className="w-full h-full bg-[#0a021a] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none p-3 sm:p-5 no-scrollbar">
@@ -93,26 +79,8 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
       <div className="w-full max-w-5xl flex items-center justify-between gap-2 z-20 pt-0.5 pb-2 border-b border-purple-500/40 shrink-0">
         {/* Left HUD Label */}
         <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
-          <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-ping shrink-0" />
           <span className="text-xs sm:text-sm font-mono font-black tracking-wider text-purple-200 uppercase drop-shadow-[0_0_8px_rgba(168,85,247,0.8)]">
             FINAL SANCTUARY
-          </span>
-        </div>
-
-        {/* Center Live Equalizer */}
-        <div className="hidden md:flex items-center gap-1.5 bg-black/60 border border-purple-500/40 px-3 py-1 rounded-full backdrop-blur-md whitespace-nowrap shrink-0">
-          <Radio className="w-3.5 h-3.5 text-fuchsia-400 animate-pulse shrink-0" />
-          <div className="flex items-end gap-0.5 h-3.5">
-            {audioBars.map((height, i) => (
-              <span
-                key={i}
-                className="w-1 bg-gradient-to-t from-purple-500 to-fuchsia-400 rounded-t transition-all duration-150"
-                style={{ height: `${isPlayingAudio ? height : 15}%` }}
-              />
-            ))}
-          </div>
-          <span className="text-[11px] font-mono text-purple-200 ml-1 font-bold">
-            {currentSong.title}
           </span>
         </div>
 
@@ -145,17 +113,9 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
           </button>
 
           <div className="hidden sm:flex items-center gap-1 bg-purple-950/80 border border-purple-500/40 px-2.5 py-1.5 rounded-xl text-xs font-mono text-purple-200 whitespace-nowrap shrink-0">
-            <Globe className="w-3.5 h-3.5 text-emerald-400 animate-pulse shrink-0" />
+            <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span>在线 <strong className="text-amber-300">{onlinePlayers}</strong></span>
           </div>
-
-          <button
-            onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-            className="p-1.5 rounded-xl bg-purple-950 border border-purple-500/40 hover:border-purple-300 text-purple-300 transition-all cursor-pointer shrink-0"
-            title={isPlayingAudio ? '静音' : '开启音效'}
-          >
-            {isPlayingAudio ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
-          </button>
         </div>
       </div>
 
