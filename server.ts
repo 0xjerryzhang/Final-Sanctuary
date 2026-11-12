@@ -2,6 +2,7 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { Card, Round } from './src/types';
@@ -19,11 +20,64 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 const DB_FILE = path.join(DATA_DIR, 'users_db.json');
+const SECRET_FILE = path.join(DATA_DIR, '.server_secret');
+
+function getOrCreateServerSecret(): string {
+  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET;
+  try {
+    if (fs.existsSync(SECRET_FILE)) {
+      return fs.readFileSync(SECRET_FILE, 'utf-8').trim();
+    }
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(SECRET_FILE, generated, 'utf-8');
+    return generated;
+  } catch {
+    return 'final_sanctuary_fallback_hmac_secret_2026';
+  }
+}
+
+const SERVER_SECRET = getOrCreateServerSecret();
+
+/**
+ * Hashes a plaintext password using scrypt with a 16-byte random salt.
+ */
+function hashPassword(plain: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = crypto.scryptSync(plain, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derivedKey}`;
+}
+
+/**
+ * Verifies a password against a stored scrypt hash (or legacy plaintext for automatic migration).
+ */
+function verifyPassword(plain: string, stored?: string): { valid: boolean; needsMigration: boolean } {
+  if (!stored) return { valid: false, needsMigration: false };
+  if (stored.startsWith('scrypt$')) {
+    const parts = stored.split('$');
+    if (parts.length !== 3) return { valid: false, needsMigration: false };
+    const [, salt, hashHex] = parts;
+    try {
+      const derivedKey = crypto.scryptSync(plain, salt, 64);
+      const storedBuf = Buffer.from(hashHex, 'hex');
+      if (derivedKey.length !== storedBuf.length) return { valid: false, needsMigration: false };
+      return { valid: crypto.timingSafeEqual(derivedKey, storedBuf), needsMigration: false };
+    } catch {
+      return { valid: false, needsMigration: false };
+    }
+  }
+  // Legacy plaintext compatibility -> immediately flagged for migration
+  return { valid: plain === stored, needsMigration: plain === stored };
+}
+
+function signUserToken(userId: string): string {
+  const sig = crypto.createHmac('sha256', SERVER_SECRET).update(userId).digest('hex');
+  return `${userId}.${sig}`;
+}
 
 export interface UserAccount {
   id: string;
   email?: string;
-  password?: string;
+  password?: string; // Stored strictly as scrypt$salt$hash
   username: string;
   nickname: string;
   avatar: string;
@@ -38,21 +92,13 @@ export interface UserAccount {
   updatedAt: number;
 }
 
+function sanitizeUser(user: UserAccount): Omit<UserAccount, 'password'> {
+  const { password: _removed, ...safeUser } = user;
+  return safeUser;
+}
+
 // In-Memory Database Store backed by JSON file
 const userStore = new Map<string, UserAccount>();
-
-function loadDatabase() {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(DB_FILE, 'utf-8');
-      const parsed: UserAccount[] = JSON.parse(data);
-      parsed.forEach(user => userStore.set(user.id, user));
-      console.log(`[Server DB] Successfully loaded ${userStore.size} user account(s) from disk.`);
-    }
-  } catch (err) {
-    console.error('[Server DB] Error reading users database file:', err);
-  }
-}
 
 function saveDatabase() {
   try {
@@ -60,6 +106,31 @@ function saveDatabase() {
     fs.writeFileSync(DB_FILE, JSON.stringify(list, null, 2), 'utf-8');
   } catch (err) {
     console.error('[Server DB] Error saving database to disk:', err);
+  }
+}
+
+function loadDatabase() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const data = fs.readFileSync(DB_FILE, 'utf-8');
+      const parsed: UserAccount[] = JSON.parse(data);
+      let migratedCount = 0;
+      parsed.forEach(user => {
+        // Automatically hash any legacy plaintext passwords on startup
+        if (user.password && !user.password.startsWith('scrypt$')) {
+          user.password = hashPassword(user.password);
+          migratedCount++;
+        }
+        userStore.set(user.id, user);
+      });
+      if (migratedCount > 0) {
+        saveDatabase();
+        console.log(`[Server DB] Migrated ${migratedCount} legacy plaintext password(s) to scrypt hashes.`);
+      }
+      console.log(`[Server DB] Successfully loaded ${userStore.size} user account(s) from disk.`);
+    }
+  } catch (err) {
+    console.error('[Server DB] Error reading users database file:', err);
   }
 }
 
@@ -1049,7 +1120,7 @@ app.post('/api/user/auth', (req, res) => {
     user = userStore.get(userId)!;
     if (nickname) user.nickname = nickname;
     if (avatar) user.avatar = avatar;
-    if (email) user.email = email;
+    if (email && !user.email) user.email = email;
     user.updatedAt = Date.now();
   } else {
     const newId = userId || `jj_user_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
@@ -1072,10 +1143,10 @@ app.post('/api/user/auth', (req, res) => {
   }
 
   saveDatabase();
-  res.json({ success: true, user });
+  res.json({ success: true, user: sanitizeUser(user), authToken: signUserToken(user.id) });
 });
 
-// Email Registration Endpoint
+// Email Registration Endpoint (Salted scrypt password hash)
 app.post('/api/user/register', (req, res) => {
   const { email, password, nickname, avatar, currentUserId } = req.body;
 
@@ -1094,11 +1165,13 @@ app.post('/api/user/register', (req, res) => {
     return res.status(400).json({ success: false, message: '该邮箱已被注册，请直接使用密码登录' });
   }
 
+  const hashedPassword = hashPassword(password);
+
   let user: UserAccount;
   if (currentUserId && userStore.has(currentUserId)) {
     user = userStore.get(currentUserId)!;
     user.email = email.toLowerCase();
-    user.password = password;
+    user.password = hashedPassword;
     if (nickname) user.nickname = nickname;
     if (avatar) user.avatar = avatar;
     user.updatedAt = Date.now();
@@ -1107,7 +1180,7 @@ app.post('/api/user/register', (req, res) => {
     user = {
       id: newId,
       email: email.toLowerCase(),
-      password,
+      password: hashedPassword,
       username: nickname || email.split('@')[0],
       nickname: nickname || `圣所乐迷_${Math.floor(1000 + Math.random() * 9000)}`,
       avatar: avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
@@ -1124,10 +1197,15 @@ app.post('/api/user/register', (req, res) => {
   }
 
   saveDatabase();
-  res.json({ success: true, message: '注册成功，赠送 130,700 圣所音符！账号已绑定。', user });
+  res.json({
+    success: true,
+    message: '注册成功，赠送 130,700 圣所音符！账号已加密绑定。',
+    user: sanitizeUser(user),
+    authToken: signUserToken(user.id),
+  });
 });
 
-// Daily Check-in Endpoint (+3270 Sanctuary Notes)
+// Daily Check-in Endpoint (+3270 Sanctuary Notes, strictly server-controlled once per day)
 app.post('/api/user/checkin', (req, res) => {
   const { userId } = req.body;
   if (!userId || !userStore.has(userId)) {
@@ -1142,7 +1220,7 @@ app.post('/api/user/checkin', (req, res) => {
       success: false,
       alreadyCheckedIn: true,
       message: '您今天已经签过到啦！明日再来领取 3,270 圣所音符吧！',
-      user,
+      user: sanitizeUser(user),
     });
   }
 
@@ -1156,11 +1234,11 @@ app.post('/api/user/checkin', (req, res) => {
     alreadyCheckedIn: false,
     reward: 3270,
     message: '🎉 每日签到成功！增发 3,270 圣所音符！',
-    user,
+    user: sanitizeUser(user),
   });
 });
 
-// Email Login Endpoint
+// Email Login Endpoint (Timing-safe scrypt hash verification)
 app.post('/api/user/login', (req, res) => {
   const { email, password } = req.body;
 
@@ -1176,11 +1254,23 @@ app.post('/api/user/login', (req, res) => {
     return res.status(404).json({ success: false, message: '该邮箱尚未注册，请先注册账号' });
   }
 
-  if (user.password !== password) {
+  const { valid, needsMigration } = verifyPassword(password, user.password);
+  if (!valid) {
     return res.status(401).json({ success: false, message: '登录密码不正确，请重新输入' });
   }
 
-  res.json({ success: true, message: '登录成功！已载入您的云端账号', user });
+  if (needsMigration) {
+    user.password = hashPassword(password);
+    user.updatedAt = Date.now();
+    saveDatabase();
+  }
+
+  res.json({
+    success: true,
+    message: '登录成功！已载入您的云端账号',
+    user: sanitizeUser(user),
+    authToken: signUserToken(user.id),
+  });
 });
 
 // Account Deletion Endpoint (Mandatory for Apple App Store / iOS TestFlight Guideline 5.1.1(v))
@@ -1209,32 +1299,31 @@ app.post('/api/user/delete', (req, res) => {
   });
 });
 
-// Update User Chips & Game Stats
+// Query Authoritative User Chips & Stats (Server is sole source of truth for chips; client cannot set arbitrary chips)
 app.post('/api/user/chips', (req, res) => {
-  const { userId, chipChange, winsChange, lossesChange } = req.body;
+  const { userId } = req.body;
   if (!userId || !userStore.has(userId)) {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
   const user = userStore.get(userId)!;
-  if (typeof chipChange === 'number') {
-    user.chips = Math.max(0, user.chips + chipChange);
-  }
-  if (winsChange) user.wins += winsChange;
-  if (lossesChange) user.losses += lossesChange;
-  if (winsChange || lossesChange) user.handsPlayed += 1;
-
-  user.updatedAt = Date.now();
-  saveDatabase();
-
-  res.json({ success: true, user });
+  res.json({ success: true, user: sanitizeUser(user) });
 });
 
-// Get Leaderboard
+// Get Leaderboard (Sanitized - never leaks password hashes or emails)
 app.get('/api/leaderboard', (req, res) => {
   const sorted = Array.from(userStore.values())
     .sort((a, b) => b.chips - a.chips)
-    .slice(0, 20);
+    .slice(0, 20)
+    .map(u => ({
+      id: u.id,
+      nickname: u.nickname,
+      avatar: u.avatar,
+      chips: u.chips,
+      wins: u.wins,
+      losses: u.losses,
+      level: u.level,
+    }));
   res.json({ success: true, leaderboard: sorted });
 });
 
@@ -1281,7 +1370,7 @@ wss.on('connection', (ws: WebSocket) => {
               username: payload?.name || session.name,
               nickname: payload?.name || session.name,
               avatar: payload?.avatar || session.avatar,
-              chips: typeof payload?.chips === 'number' ? payload.chips : session.chips,
+              chips: 130700, // Server-authoritative initial grant; ignores any client-passed chips
               level: 1,
               exp: 0,
               wins: 0,
@@ -1294,7 +1383,7 @@ wss.on('connection', (ws: WebSocket) => {
           } else {
             if (payload?.name) account.nickname = payload.name;
             if (payload?.avatar) account.avatar = payload.avatar;
-            if (typeof payload?.chips === 'number') account.chips = payload.chips;
+            // Authoritative chips: never allow client INIT_USER payload to overwrite server account.chips
             account.updatedAt = Date.now();
           }
 
@@ -1311,7 +1400,6 @@ wss.on('connection', (ws: WebSocket) => {
           if (targetReconnectRoomId && rooms.has(targetReconnectRoomId)) {
             reconnectedRoom = rooms.get(targetReconnectRoomId);
           } else {
-            // Also check any room where this userId is already seated
             reconnectedRoom = Array.from(rooms.values()).find(r =>
               r.players.some(p => !p.isBot && p.userId === uId)
             );
@@ -1322,7 +1410,7 @@ wss.on('connection', (ws: WebSocket) => {
               p => !p.isBot && (p.userId === uId || p.id === session.id)
             );
             if (existingSeat) {
-              session.id = existingSeat.id; // Preserve seat ID across reconnect
+              session.id = existingSeat.id;
               session.roomId = reconnectedRoom.id;
               existingSeat.ws = ws;
               existingSeat.isOnline = true;
@@ -1353,17 +1441,10 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'SYNC_CHIPS': {
+          // Server is authoritative for chips: return current server balance without accepting client chip overrides
           if (session.userId && userStore.has(session.userId)) {
             const acc = userStore.get(session.userId)!;
-            if (typeof payload?.chips === 'number') {
-              acc.chips = payload.chips;
-              session.chips = payload.chips;
-            }
-            if (payload?.winsChange) acc.wins += payload.winsChange;
-            if (payload?.lossesChange) acc.losses += payload.lossesChange;
-            acc.updatedAt = Date.now();
-            saveDatabase();
-
+            session.chips = acc.chips;
             ws.send(JSON.stringify({
               type: 'USER_UPDATED',
               data: {
