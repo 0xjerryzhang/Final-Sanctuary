@@ -76,7 +76,7 @@ export default function App() {
   };
 
   return (
-    <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#070212] text-white font-sans relative overflow-hidden select-none touch-none overscroll-none">
+    <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#070212] text-white font-sans relative overflow-hidden select-none overscroll-none">
       {/* Global Network Status & iOS Reconnect Notifier */}
       <NetworkNotifier />
 

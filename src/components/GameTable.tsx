@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Player, Card, Round, StageLightMode, ConcertSong } from '../types';
-import { AlbumStage } from '../data/albumStages';
+import { AlbumStage, formatCompactChips } from '../data/albumStages';
 import { evaluate7CardHand, isCardInHand } from '../utils/pokerEvaluator';
 import { triggerHaptic } from '../utils/haptics';
 import { iosAudio } from '../utils/iosAudio';
@@ -14,7 +14,7 @@ import { FlippableCard } from './FlippableCard';
 import { FloatingStageBar } from './StageControls';
 import { MetallicPokerChip } from './MetallicPokerChip';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, RotateCcw, Play, HelpCircle, Disc, ChevronUp, ChevronDown, LogOut, ArrowRight, Award, ClipboardList, Menu, Eye, EyeOff, Music, Pause, SkipForward, Sparkles, Wand2, MessageSquare, Send, X, Globe, Clock } from 'lucide-react';
+import { Trophy, RotateCcw, Play, HelpCircle, Disc, ChevronUp, ChevronDown, LogOut, ArrowRight, Award, ClipboardList, Menu, Eye, EyeOff, Sparkles, MessageSquare, Send, X, Globe, Clock } from 'lucide-react';
 import { wsService } from '../services/websocket';
 
 interface ChatMessage {
@@ -44,9 +44,9 @@ interface GameTableProps {
   onReturnToLauncher?: () => void;
 }
 
-const DEFAULT_START_CHIPS = 2000;
-const DEFAULT_BIG_BLIND = 20;
-const DEFAULT_SMALL_BLIND = 10;
+const DEFAULT_START_CHIPS = 100000;
+const DEFAULT_BIG_BLIND = 1000;
+const DEFAULT_SMALL_BLIND = 500;
 
 // Bot lyric responses for Immersion
 const BOT_DIALOGS: Record<string, {
@@ -132,7 +132,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [showTourExitModal, setShowTourExitModal] = useState(false);
 
   // Notifications & Interactive Panels
-  const [toastMsg, setToastMsg] = useState('🎵 欢迎来到 Final Sanctuary 德州扑克演唱会！点击下方【开始第一局】发牌！');
+  const [toastMsg, setToastMsg] = useState('点击下方发牌开局');
   const [botSpeech, setBotSpeech] = useState<Record<string, string>>({});
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [raiseSliderVal, setRaiseSliderVal] = useState(BIG_BLIND * 2);
@@ -151,9 +151,9 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { id: '1', senderName: '牌桌荷官', avatar: '🎵', text: '欢迎加入演唱会扑克桌！祝大家把把牌运爆棚！', isSystem: true, timestamp: '12:00' },
-    { id: '2', senderName: '枭雄曹操', avatar: '⚔️', text: '东汉末年分三国，这局谁敢与我煮酒论英雄？', timestamp: '12:01' },
-    { id: '3', senderName: '江南小过客', avatar: '🌂', text: '风到这里就是粘，听着歌打牌就是享受。', timestamp: '12:01' },
+    { id: '1', senderName: '牌桌荷官', avatar: '🎵', text: '欢迎加入圣所牌桌！祝把把好运！', isSystem: true, timestamp: '12:00' },
+    { id: '2', senderName: '枭雄曹操', avatar: '⚔️', text: '东汉末年分三国，这局谁敢一战？', timestamp: '12:01' },
+    { id: '3', senderName: '江南过客', avatar: '🌂', text: '听着歌打牌最惬意～', timestamp: '12:01' },
   ]);
 
   // Interactive Chat Sender
@@ -173,7 +173,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
     const newMsg: ChatMessage = {
       id: Date.now().toString(),
-      senderName: myPlayer?.name || '你 (林俊杰歌迷)',
+      senderName: myPlayer?.name || '圣所乐迷',
       avatar: '🎤',
       text: content,
       isUser: true,
@@ -189,16 +189,16 @@ export const GameTable: React.FC<GameTableProps> = ({
       const activeBots = ['caocao', 'jiangnan', 'years', 'love'];
       const randomBot = activeBots[Math.floor(Math.random() * activeBots.length)];
       const botReplies: Record<string, string[]> = {
-        caocao: ['说得好！有胆识！', '胜负尚未可知，继续切磋！', '英雄所见略同！', '东汉末年，这局大家牌面都很硬！'],
-        jiangnan: ['江南雨未停，牌局正精彩～', '听着 JJ 的歌打牌真惬意。', '跟注玩玩看～', '缘分到了，这一把要赢！'],
-        years: ['一千年以后，希望这一把牌依然经典！', '牌局如人生，充满不确定。', '我看好你哦！', '这局心跳又乱了节奏！'],
-        love: ['修炼爱情，也修炼牌技！', '打牌要保持好心情～', '这把大家手气都不错！', '快乐或伤心都有你们陪伴！'],
+        caocao: ['有胆识！', '继续切磋！', '英雄所见略同！'],
+        jiangnan: ['牌局正精彩～', '跟注玩玩看～', '这把要赢！'],
+        years: ['看好你哦！', '心跳乱了节奏！', '好牌值得等待！'],
+        love: ['保持好心情～', '手气不错！', '一起冲！'],
       };
       const botNameMap: Record<string, { name: string; avatar: string }> = {
         caocao: { name: '枭雄曹操', avatar: '⚔️' },
-        jiangnan: { name: '江南小过客', avatar: '🌂' },
-        years: { name: '千年时光旅人', avatar: '⏳' },
-        love: { name: '修炼爱情大师', avatar: '🌸' },
+        jiangnan: { name: '江南过客', avatar: '🌂' },
+        years: { name: '千年旅人', avatar: '⏳' },
+        love: { name: '修炼爱情', avatar: '🌸' },
       };
       const replyList = botReplies[randomBot];
       const replyText = replyList[Math.floor(Math.random() * replyList.length)];
@@ -368,11 +368,11 @@ export const GameTable: React.FC<GameTableProps> = ({
 
   const resetWholeSession = () => {
     const initPlayers: Player[] = [
-      { id: 'player', name: '林俊杰歌迷 (你)', avatar: '🎤', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: false, lastAction: '' },
-      { id: 'jiangnan', name: '江南小过客', avatar: '🌂', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
+      { id: 'player', name: '圣所乐迷', avatar: '🎤', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: false, lastAction: '' },
+      { id: 'jiangnan', name: '江南过客', avatar: '🌂', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
       { id: 'caocao', name: '枭雄曹操', avatar: '⚔️', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
-      { id: 'years', name: '千年时光旅人', avatar: '⏳', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
-      { id: 'love', name: '修炼爱情大师', avatar: '🌸', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
+      { id: 'years', name: '千年旅人', avatar: '⏳', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
+      { id: 'love', name: '修炼爱情', avatar: '🌸', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
     ];
     setPlayers(initPlayers);
     setDeck([]);
@@ -394,7 +394,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     setShowRoundModal(false);
     setShowGuideModal(false);
     setShowTourExitModal(false);
-    setToastMsg('🎵 音乐会巡演桌就绪！点击【开始第一局】拉开帷幕！');
+    setToastMsg('点击下方发牌开局');
   };
 
   // Build deck
@@ -599,7 +599,7 @@ export const GameTable: React.FC<GameTableProps> = ({
       let currentBet = 0;
 
       // Top up bankrupt players automatically with minimum chips
-      if (chips <= 50) {
+      if (chips < BIG_BLIND * 2) {
         chips = START_CHIPS;
       }
 
@@ -623,7 +623,7 @@ export const GameTable: React.FC<GameTableProps> = ({
         cards: [card1, card2],
         isFolded: false,
         isAllIn: false,
-        lastAction: idx === newSbIdx ? 'SB (小盲)' : (idx === newBbIdx ? 'BB (大盲)' : ''),
+        lastAction: idx === newSbIdx ? '小盲' : (idx === newBbIdx ? '大盲' : ''),
       };
     });
 
@@ -640,7 +640,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const utgIdx = (newBbIdx + 1) % activePlayersCount;
     setActivePlayerIndex(utgIdx);
 
-    setToastMsg(`🎟️ 第 ${nextHandNum} 局开始！庄家为【${players[newDIdx].name}】，底牌已发好！`);
+    setToastMsg(`第 ${nextHandNum} 局 · 翻牌前`);
 
     setTimeout(() => {
       setIsDealing(false);
@@ -672,7 +672,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     }
 
     const p = players[idx];
-    setToastMsg(`🎤 [过牌] ${p.name} 选择过牌。`);
+    setToastMsg(`${p.name} · 过牌`);
     if (p.isBot) triggerBotSpeech(p.id, 'check');
 
     if (idx === 0) {
@@ -696,7 +696,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const toCall = currentMaxBet - p.currentBet;
     const actualCall = Math.min(p.chips, toCall);
 
-    setToastMsg(`🔊 [跟注] ${p.name} 跟注 ${actualCall} 圣所音符。`);
+    setToastMsg(`${p.name} 跟注 ${formatCompactChips(actualCall)}`);
     if (p.isBot) triggerBotSpeech(p.id, 'call');
 
     if (idx === 0) {
@@ -735,7 +735,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const extraChipsNeeded = raiseTotalAmount - p.currentBet;
     const actualRaise = Math.min(p.chips, extraChipsNeeded);
 
-    setToastMsg(`🔥 [加注] ${p.name} 加注至 ${p.currentBet + actualRaise} 圣所音符！`);
+    setToastMsg(`${p.name} 加注至 ${formatCompactChips(p.currentBet + actualRaise)}`);
     if (p.isBot) triggerBotSpeech(p.id, 'raise');
 
     if (idx === 0) {
@@ -750,7 +750,7 @@ export const GameTable: React.FC<GameTableProps> = ({
           ...player,
           chips: player.chips - actualRaise,
           currentBet: player.currentBet + actualRaise,
-          lastAction: isNowAllIn ? '全押' : `加注(${player.currentBet + actualRaise})`,
+          lastAction: isNowAllIn ? '全押' : '加注',
           isAllIn: isNowAllIn || player.isAllIn,
         };
       }
@@ -772,7 +772,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     }
 
     const p = players[idx];
-    setToastMsg(`💨 [弃牌] ${p.name} 弃牌。`);
+    setToastMsg(`${p.name} · 弃牌`);
     if (p.isBot) triggerBotSpeech(p.id, 'fold');
 
     if (idx === 0) {
@@ -796,7 +796,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const allInAmt = p.chips;
     const totalBet = p.currentBet + allInAmt;
 
-    setToastMsg(`🚀 [全押] ${p.name} 孤注一掷 全押 ${allInAmt} 圣所音符！`);
+    setToastMsg(`${p.name} 全押 ${formatCompactChips(allInAmt)}`);
     if (p.isBot) triggerBotSpeech(p.id, 'raise');
 
     if (idx === 0) {
@@ -828,7 +828,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const winner = players.find(p => !p.isFolded);
     if (!winner) return;
 
-    setToastMsg(`🏆 [本局结束] 其他玩家弃牌，${winner.name} 赢下底池 ${pot} 圣所音符！`);
+    setToastMsg(`${winner.name} 赢 ${formatCompactChips(pot)}`);
     if (winner.isBot) triggerBotSpeech(winner.id, 'win');
 
     if (winner.id === 'player') {
@@ -837,7 +837,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
     setPlayers(prev => prev.map(p => p.id === winner.id ? { ...p, chips: p.chips + pot } : p));
     setWinnerIds([winner.id]);
-    setWinningDescription('对手全场弃牌');
+    setWinningDescription('对手弃牌');
     setRound('Showdown');
     setActivePlayerIndex(-1);
     setShowRoundModal(true);
@@ -858,21 +858,21 @@ export const GameTable: React.FC<GameTableProps> = ({
       const nextCard3 = deck.pop()!;
       setCommunityCards([nextCard1, nextCard2, nextCard3]);
       setRound('Flop');
-      setToastMsg(`🌈 [翻牌圈] 揭开前 3 张公共牌！`);
+      setToastMsg('翻牌圈 · Flop');
       if (canActCount > 0) startBettingRoundFromDealerLeft();
       else setTimeout(advanceRound, 1000);
     } else if (round === 'Flop') {
       const nextCard = deck.pop()!;
       setCommunityCards(prev => [...prev, nextCard]);
       setRound('Turn');
-      setToastMsg(`✨ [转牌圈] 揭开第 4 张公共牌！`);
+      setToastMsg('转牌圈 · Turn');
       if (canActCount > 0) startBettingRoundFromDealerLeft();
       else setTimeout(advanceRound, 1000);
     } else if (round === 'Turn') {
       const nextCard = deck.pop()!;
       setCommunityCards(prev => [...prev, nextCard]);
       setRound('River');
-      setToastMsg(`🎭 [河牌圈] 揭开最后 1 张公共牌！`);
+      setToastMsg('河牌圈 · River');
       if (canActCount > 0) startBettingRoundFromDealerLeft();
       else setTimeout(advanceRound, 1000);
     } else if (round === 'River') {
@@ -950,7 +950,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     setWinningDescription(winningDesc);
 
     winners.forEach(w => {
-      setToastMsg(`👑 [摊牌比牌] ${w.player.name} 凭借【${w.description}】独享 ${splitShare} 圣所音符！`);
+      setToastMsg(`${w.player.name} · ${w.handType} 赢 ${formatCompactChips(splitShare)}`);
       if (w.player.isBot) triggerBotSpeech(w.player.id, 'win');
     });
 
@@ -987,49 +987,53 @@ export const GameTable: React.FC<GameTableProps> = ({
     return riverInBestHand && holeInBestHand && isValidCombo;
   })();
 
+  const blindDisplay = selectedStage
+    ? selectedStage.blindLabel
+    : `${formatCompactChips(SMALL_BLIND)}/${formatCompactChips(BIG_BLIND)}`;
+
   return (
     <div className="w-full h-full bg-[#090118] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none" id="main-poker-stage">
       
       {/* 1. TOP HEADER BAR */}
-      <div className="w-full max-w-lg md:max-w-xl lg:max-w-2xl px-3 pt-2 pb-1 flex items-center justify-between z-40 flex-shrink-0">
+      <div className="w-full max-w-lg md:max-w-xl lg:max-w-2xl px-3 pt-2 pb-1 flex items-center justify-between gap-2 z-40 flex-shrink-0">
         {/* Left: Return to Launcher button */}
         <button
           onClick={onReturnToLauncher}
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-b from-purple-950 to-slate-950 border border-purple-400/80 text-purple-300 flex items-center justify-center shadow-[0_0_12px_rgba(168,85,247,0.4)] hover:border-purple-300 active:scale-95 cursor-pointer transition-all"
-          title="返回启动大厅"
+          className="w-9 h-9 rounded-full bg-gradient-to-b from-purple-950 to-slate-950 border border-purple-400/80 text-purple-300 flex items-center justify-center shadow-[0_0_12px_rgba(168,85,247,0.4)] hover:border-purple-300 active:scale-95 cursor-pointer transition-all shrink-0"
+          title="返回大厅"
         >
-          <LogOut className="w-4 h-4 sm:w-5 sm:h-5 text-purple-300" />
+          <LogOut className="w-4 h-4 text-purple-300" />
         </button>
 
         {/* Center: Cyber Neon Pill Badge */}
-        <div className="bg-gradient-to-r from-slate-950 via-purple-950/90 to-slate-950 border-2 border-purple-400/90 px-3.5 sm:px-5 py-1 rounded-full shadow-[0_0_20px_rgba(168,85,247,0.5)] flex flex-col items-center justify-center">
-          <span className="text-xs sm:text-sm font-black text-white font-mono tracking-wider text-shadow-glow-cyan flex items-center gap-1.5">
-            {isOnlineMode && <Globe className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />}
-            <span>{selectedStage ? `${selectedStage.smallBlind}/${selectedStage.bigBlind} ${selectedStage.name}` : '10/20 FINAL SANCTUARY GLOBAL POKER'}</span>
+        <div className="bg-gradient-to-r from-slate-950 via-purple-950/90 to-slate-950 border-2 border-purple-400/90 px-4 py-1 rounded-full shadow-[0_0_20px_rgba(168,85,247,0.5)] flex items-center justify-center gap-2 whitespace-nowrap min-w-0">
+          {isOnlineMode && <Globe className="w-3.5 h-3.5 text-emerald-400 animate-pulse shrink-0" />}
+          <span className="text-xs sm:text-sm font-black text-white font-mono tracking-wider truncate">
+            {selectedStage ? selectedStage.name : '《乐行者》'}
           </span>
-          <span className="text-[8px] sm:text-[9px] font-mono font-bold text-fuchsia-300 uppercase tracking-widest -mt-0.5">
-            {isOnlineMode ? `ONLINE LIVE · ${onlineRoomData?.roomName || '实时联机对战'}` : (selectedStage?.badgeText || 'FINAL SANCTUARY STADIUM')}
+          <span className="text-xs font-mono font-black text-amber-300 px-2 py-0.5 rounded-full bg-purple-950/90 border border-amber-400/40 shrink-0">
+            {blindDisplay}
           </span>
         </div>
 
         {/* Right Action Group: Chat + Hamburger Menu */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => setShowChatDrawer(true)}
-            className="relative px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-900 via-fuchsia-900 to-purple-950 border border-purple-400/80 text-purple-200 text-xs font-bold flex items-center gap-1 shadow-[0_0_12px_rgba(168,85,247,0.5)] hover:border-purple-300 active:scale-95 cursor-pointer transition-all"
-            title="牌桌互动聊天室"
+            className="relative px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-900 via-fuchsia-900 to-purple-950 border border-purple-400/80 text-purple-200 text-xs font-bold flex items-center gap-1 shadow-[0_0_12px_rgba(168,85,247,0.5)] hover:border-purple-300 active:scale-95 cursor-pointer transition-all whitespace-nowrap shrink-0"
+            title="牌桌聊天"
           >
-            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 animate-pulse" />
-            <span className="text-[10px] sm:text-xs font-bold whitespace-nowrap">聊天</span>
+            <MessageSquare className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="text-[11px] font-bold">聊天</span>
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute -top-0.5 -right-0.5" />
           </button>
 
           <button
             onClick={() => setShowMenuDrawer(true)}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-b from-fuchsia-950 to-slate-950 border border-fuchsia-400/80 text-fuchsia-300 flex items-center justify-center shadow-[0_0_12px_rgba(236,72,153,0.4)] hover:border-fuchsia-300 active:scale-95 cursor-pointer transition-all"
-            title="主菜单与设置"
+            className="w-9 h-9 rounded-full bg-gradient-to-b from-fuchsia-950 to-slate-950 border border-fuchsia-400/80 text-fuchsia-300 flex items-center justify-center shadow-[0_0_12px_rgba(236,72,153,0.4)] hover:border-fuchsia-300 active:scale-95 cursor-pointer transition-all shrink-0"
+            title="菜单"
           >
-            <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Menu className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1148,12 +1152,14 @@ export const GameTable: React.FC<GameTableProps> = ({
           </div>
         </div>
 
-        {/* Live announcement ticker - Centered constrained pill between top avatars */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 max-w-[150px] sm:max-w-[220px] z-10 pointer-events-none">
-          <div className="bg-black/85 border border-amber-500/40 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold text-amber-200 backdrop-blur-md text-center truncate shadow">
-            {toastMsg}
+        {/* Live announcement ticker - Only shown when active hand is in progress, centered and compact */}
+        {round !== 'Waiting' && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 max-w-[140px] sm:max-w-[200px] z-10 pointer-events-none">
+            <div className="bg-black/85 border border-amber-500/40 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold text-amber-200 backdrop-blur-md text-center truncate whitespace-nowrap shadow">
+              {toastMsg}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* TOP ROW BOT PLAYERS (Caocao & 1000Years) - Absolute Positions with z-30 */}
         <div className="absolute top-2.5 left-2 sm:left-4 z-30 origin-top-left">
@@ -1214,18 +1220,18 @@ export const GameTable: React.FC<GameTableProps> = ({
         {/* CENTER TABLE FELT: Pot + Community Cards */}
         <div className="absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-1 p-1 sm:p-1.5 rounded-xl bg-black/70 border border-amber-500/40 backdrop-blur-md shadow-2xl z-20 max-w-[46%] sm:max-w-[55%]">
           {/* Pot Badge with Floating Metallic Final Sanctuary Chips */}
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-amber-400/60 px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg shadow-lg flex items-center gap-1 sm:gap-1.5">
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-amber-400/60 px-2.5 py-0.5 rounded-lg shadow-lg flex items-center gap-1.5 whitespace-nowrap">
             <MetallicPokerChip size="sm" selectedStage={selectedStage} showStack={true} isFloating={true} />
-            <span className="text-[10px] sm:text-[11px] font-mono text-amber-300 font-bold flex items-center gap-1">
-              Pot : <span className="text-white font-black text-xs sm:text-sm">{pot}</span>
+            <span className="text-[10px] sm:text-xs font-mono text-amber-300 font-bold flex items-center gap-1">
+              底池 <span className="text-white font-black text-xs sm:text-sm">{formatCompactChips(pot)}</span>
             </span>
           </div>
 
           {/* Community Cards */}
           <div className="flex gap-0.5 sm:gap-1.5 items-center justify-center p-0.5 sm:p-1 rounded-lg bg-emerald-950/60 border border-emerald-500/20 max-w-full overflow-x-auto">
             {communityCards.length === 0 ? (
-              <span className="text-[9px] sm:text-[10px] text-emerald-300/60 font-mono italic px-2 py-0.5">
-                Waiting...
+              <span className="text-[9px] sm:text-[10px] text-emerald-300/60 font-mono px-2.5 py-0.5 whitespace-nowrap">
+                等待发牌
               </span>
             ) : (
               communityCards.map((card, cIdx) => {
@@ -1245,7 +1251,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                     {isRiverHighlight && (
                       <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-rose-500 to-fuchsia-600 text-white text-[8px] font-black px-1.5 py-0.2 rounded-full whitespace-nowrap shadow-[0_0_8px_rgba(245,158,11,0.8)] z-30 flex items-center gap-0.5 animate-bounce">
                         <Sparkles className="w-2.5 h-2.5 text-amber-200" />
-                        <span>河牌组合</span>
+                        <span>河牌成牌</span>
                       </div>
                     )}
                   </div>
@@ -1255,7 +1261,7 @@ export const GameTable: React.FC<GameTableProps> = ({
           </div>
 
           {round === 'Showdown' && winningDescription && (
-            <div className="bg-yellow-500/20 border border-yellow-400/50 text-yellow-200 px-2 py-0.5 rounded-md text-[9px] font-bold text-center flex items-center gap-1 shadow max-w-full truncate">
+            <div className="bg-yellow-500/20 border border-yellow-400/50 text-yellow-200 px-2 py-0.5 rounded-md text-[9px] font-bold text-center flex items-center gap-1 shadow max-w-full truncate whitespace-nowrap">
               <Trophy className="w-3 h-3 text-yellow-400 animate-bounce flex-shrink-0" />
               <span className="truncate">{winningDescription}</span>
             </div>
@@ -1289,19 +1295,11 @@ export const GameTable: React.FC<GameTableProps> = ({
               animate={{ scale: 1, opacity: 1 }}
               className="badge-glowing-stream p-[1.5px] rounded-full shadow-[0_0_18px_rgba(34,211,238,0.7)] hidden sm:flex"
             >
-              <div className="bg-slate-950/95 border border-amber-300/90 px-3 py-0.5 sm:px-4 sm:py-1 rounded-full flex items-center gap-1.5 backdrop-blur-md">
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse flex-shrink-0" />
-                <span className="text-[10px] sm:text-xs font-bold text-amber-200 tracking-wider">
-                  牌桌边缘提示：
+              <div className="bg-slate-950/95 border border-amber-300/90 px-3 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-md whitespace-nowrap">
+                <Sparkles className="w-3 h-3 text-amber-300 animate-pulse shrink-0" />
+                <span className="text-xs font-black text-white font-mono">
+                  {myCurrentEvaluation.handType}
                 </span>
-                <span className="text-xs sm:text-sm font-black text-white font-mono tracking-wider text-shadow-glow-cyan">
-                  {myCurrentEvaluation.description}
-                </span>
-                {myCurrentEvaluation.handType !== '高牌' && (
-                  <span className="bg-gradient-to-r from-amber-400 via-fuchsia-500 to-rose-500 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow tracking-wider animate-bounce">
-                    {myCurrentEvaluation.handType}
-                  </span>
-                )}
               </div>
             </motion.div>
           )}
@@ -1312,26 +1310,32 @@ export const GameTable: React.FC<GameTableProps> = ({
             return (
               <div className="relative flex flex-col items-center">
                 {/* Table Badge */}
-                <div className={`px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-xl border-2 shadow-xl flex items-center gap-1.5 backdrop-blur-md transition-all ${
+                <div className={`px-3 py-1 rounded-xl border-2 shadow-xl flex items-center gap-2 backdrop-blur-md transition-all whitespace-nowrap ${
                   isMyTurn ? 'bg-blue-600/90 border-cyan-300 ring-2 ring-cyan-400 animate-pulse' : 'bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-amber-400/60'
                 }`}>
-                  <span className={`px-1 py-0.2 rounded text-[8px] uppercase font-black tracking-wider ${myPosInfo.badgeStyle}`}>
+                  <span className={`px-1.5 py-0.2 rounded text-[8px] uppercase font-black tracking-wider ${myPosInfo.badgeStyle}`}>
                     {myPosInfo.code}
                   </span>
 
                   <div className="flex items-center gap-1">
                     {isAvatarImage ? (
-                      <img src={myPlayer.avatar} alt={myPlayer.name} className="w-4 h-4 rounded-full object-cover border border-amber-300" />
+                      <img src={myPlayer.avatar} alt={myPlayer.name} className="w-4 h-4 rounded-full object-cover border border-amber-300 shrink-0" />
                     ) : (
-                      <span className="text-xs">{myPlayer.avatar || '🎤'}</span>
+                      <span className="text-xs shrink-0">{myPlayer.avatar || '🎤'}</span>
                     )}
-                    <span className="text-[10px] sm:text-xs font-black text-white uppercase tracking-wider">
-                      {myPlayer.name} ({myPlayer.lastAction || '在圈'})
+                    <span className="text-[11px] sm:text-xs font-black text-white max-w-[80px] truncate">
+                      {myPlayer.name}
                     </span>
                   </div>
 
-                  <span className="text-[10px] sm:text-xs font-mono font-black text-amber-300">
-                    💰 {myPlayer.chips}
+                  {myPlayer.lastAction && (
+                    <span className="px-1.5 py-0.2 rounded bg-purple-900/80 border border-purple-400/50 text-[9px] font-bold text-purple-200">
+                      {myPlayer.lastAction}
+                    </span>
+                  )}
+
+                  <span className="text-[11px] sm:text-xs font-mono font-black text-amber-300">
+                    💰 {formatCompactChips(myPlayer.chips)}
                   </span>
 
                   {isOnlineMode && turnSecondsLeft > 0 && isMyTurn && (
@@ -1344,7 +1348,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
                 {/* Chips on felt with micro levitation */}
                 {myPlayer.currentBet > 0 && (
-                  <div className="absolute -top-6 bg-black/85 border border-amber-400/60 px-2 py-0.5 rounded-full text-[8px] font-mono text-amber-300 font-bold shadow-lg flex items-center gap-1 z-30">
+                  <div className="absolute -top-6 bg-black/85 border border-amber-400/60 px-2 py-0.5 rounded-full text-[8px] font-mono text-amber-300 font-bold shadow-lg flex items-center gap-1 z-30 whitespace-nowrap">
                     <MetallicPokerChip size="xs" amount={myPlayer.currentBet} selectedStage={selectedStage} isFloating={true} />
                   </div>
                 )}
@@ -1367,12 +1371,11 @@ export const GameTable: React.FC<GameTableProps> = ({
             <div className="flex flex-col items-center justify-center gap-2 text-center">
               <button
                 onClick={startNextRound}
-                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm shadow-2xl border-2 border-amber-300 flex items-center gap-2 cursor-pointer active:scale-95 transition-all animate-bounce"
+                className="px-7 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm shadow-2xl border-2 border-amber-300 flex items-center gap-2 cursor-pointer active:scale-95 transition-all whitespace-nowrap"
               >
-                <Play className="w-4 h-4 fill-slate-950" />
-                <span>开始发牌 (Deal)</span>
+                <Play className="w-4 h-4 fill-slate-950 shrink-0" />
+                <span>开始发牌</span>
               </button>
-              <p className="text-xs font-bold text-amber-200/80">点击发牌拉开对局帷幕</p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center w-full">
@@ -1385,15 +1388,9 @@ export const GameTable: React.FC<GameTableProps> = ({
                     exit={{ scale: 0.85, opacity: 0, y: -6 }}
                     className="mb-1 bg-gradient-to-r from-amber-400 via-rose-500 to-fuchsia-600 p-[1.5px] rounded-full shadow-[0_0_20px_rgba(245,158,11,0.8)] z-30"
                   >
-                    <div className="bg-slate-950/90 border border-amber-300/80 px-3 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-md">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin-slow flex-shrink-0" />
-                      <span className="text-[10px] sm:text-xs font-black text-amber-300">✨ 河牌组合达成：</span>
-                      <span className="text-xs font-black text-white font-mono text-shadow-glow-cyan">
-                        【{myCurrentEvaluation?.handType}】
-                      </span>
-                      <span className="bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow tracking-wider">
-                        {myCurrentEvaluation?.description}
-                      </span>
+                    <div className="bg-slate-950/90 border border-amber-300/80 px-3 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-md whitespace-nowrap">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin-slow shrink-0" />
+                      <span className="text-xs font-black text-amber-300">河牌成牌 · {myCurrentEvaluation?.handType}</span>
                     </div>
                   </motion.div>
                 )}
@@ -1426,33 +1423,29 @@ export const GameTable: React.FC<GameTableProps> = ({
                 </div>
               </div>
 
-              {/* Quick Flip Button & Peek Prompt */}
-              <div className="mt-1 flex items-center gap-2 z-30">
+              {/* Quick Flip Button */}
+              <div className="mt-1 flex items-center justify-center z-30">
                 <button
                   type="button"
                   onClick={handleToggleFlipCards}
-                  className={`px-3 py-1 rounded-full border text-xs font-bold shadow-lg transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 ${
+                  className={`px-4 py-1 rounded-full border text-xs font-bold shadow-lg transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
                     isCardsFlipped
                       ? 'bg-purple-950/90 border-purple-400/80 text-purple-200 hover:bg-purple-900'
-                      : 'bg-gradient-to-r from-amber-500 via-fuchsia-500 to-purple-600 border-amber-300 text-white shadow-[0_0_12px_rgba(245,158,11,0.5)] animate-pulse'
+                      : 'bg-gradient-to-r from-amber-500 via-fuchsia-500 to-purple-600 border-amber-300 text-white shadow-[0_0_12px_rgba(245,158,11,0.5)]'
                   }`}
                 >
                   {isCardsFlipped ? (
                     <>
-                      <EyeOff className="w-3.5 h-3.5 text-purple-300" />
-                      <span>点击盖牌 (Hide)</span>
+                      <EyeOff className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                      <span>盖起底牌</span>
                     </>
                   ) : (
                     <>
-                      <Eye className="w-3.5 h-3.5 text-amber-200" />
-                      <span>点击看底牌 (Reveal Cards)</span>
+                      <Eye className="w-3.5 h-3.5 text-amber-200 shrink-0" />
+                      <span>翻看底牌</span>
                     </>
                   )}
                 </button>
-
-                <span className="text-[10px] font-mono text-purple-300/80">
-                  {isCardsFlipped ? '底牌已揭开' : '默认背面对齐 (点击卡牌翻看)'}
-                </span>
               </div>
             </div>
           )}
@@ -1468,56 +1461,56 @@ export const GameTable: React.FC<GameTableProps> = ({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 15 }}
-                className="absolute bottom-16 right-0 left-0 bg-slate-950/95 border-2 border-amber-500/70 rounded-2xl p-3 shadow-2xl flex flex-col gap-2 z-50 text-xs"
+                className="absolute bottom-14 right-0 left-0 bg-slate-950/95 border-2 border-amber-500/70 rounded-2xl p-3 shadow-2xl flex flex-col gap-2 z-50 text-xs"
               >
-                <div className="flex justify-between text-xs font-mono text-amber-300 font-bold">
-                  <span>加注至: {raiseSliderVal} 圣所音符</span>
-                  <span>可用: {myPlayer?.chips + myPlayer?.currentBet}</span>
+                <div className="flex justify-between text-xs font-mono text-amber-300 font-bold whitespace-nowrap">
+                  <span>加注至 {formatCompactChips(raiseSliderVal)}</span>
+                  <span>上限 {formatCompactChips((myPlayer?.chips || 0) + (myPlayer?.currentBet || 0))}</span>
                 </div>
 
                 <input
                   type="range"
-                  min={Math.min(myPlayer?.chips + myPlayer?.currentBet, currentMaxBet === 0 ? BIG_BLIND : currentMaxBet + BIG_BLIND)}
-                  max={myPlayer?.chips + myPlayer?.currentBet}
-                  step={BIG_BLIND}
+                  min={Math.min((myPlayer?.chips || 0) + (myPlayer?.currentBet || 0), currentMaxBet === 0 ? BIG_BLIND : currentMaxBet + BIG_BLIND)}
+                  max={(myPlayer?.chips || 0) + (myPlayer?.currentBet || 0)}
+                  step={SMALL_BLIND}
                   value={raiseSliderVal}
                   onChange={(e) => setRaiseSliderVal(Number(e.target.value))}
                   className="w-full accent-amber-400 h-2 rounded bg-slate-800 cursor-pointer"
                 />
 
-                <div className="grid grid-cols-4 gap-1.5 font-bold">
+                <div className="grid grid-cols-4 gap-1.5 font-bold whitespace-nowrap">
                   <button
-                    onClick={() => setRaiseSliderVal(Math.min(myPlayer?.chips + myPlayer?.currentBet, (currentMaxBet || BIG_BLIND) + 50))}
+                    onClick={() => setRaiseSliderVal(Math.min((myPlayer?.chips || 0) + (myPlayer?.currentBet || 0), (currentMaxBet || BIG_BLIND) + BIG_BLIND * 2))}
                     className="py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 cursor-pointer"
                   >
-                    +50
+                    2x大盲
                   </button>
                   <button
-                    onClick={() => setRaiseSliderVal(Math.min(myPlayer?.chips + myPlayer?.currentBet, (currentMaxBet || BIG_BLIND) + 100))}
+                    onClick={() => setRaiseSliderVal(Math.min((myPlayer?.chips || 0) + (myPlayer?.currentBet || 0), (currentMaxBet || BIG_BLIND) + BIG_BLIND * 4))}
                     className="py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 cursor-pointer"
                   >
-                    +100
+                    4x大盲
                   </button>
                   <button
-                    onClick={() => setRaiseSliderVal(Math.min(myPlayer?.chips + myPlayer?.currentBet, pot > 0 ? pot : BIG_BLIND * 4))}
+                    onClick={() => setRaiseSliderVal(Math.min((myPlayer?.chips || 0) + (myPlayer?.currentBet || 0), pot > 0 ? pot : BIG_BLIND * 4))}
                     className="py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-slate-200 cursor-pointer"
                   >
                     1x底池
                   </button>
                   <button
-                    onClick={() => setRaiseSliderVal(myPlayer?.chips + myPlayer?.currentBet)}
+                    onClick={() => setRaiseSliderVal((myPlayer?.chips || 0) + (myPlayer?.currentBet || 0))}
                     className="py-1.5 rounded-lg bg-amber-500/30 text-amber-300 border border-amber-400 cursor-pointer"
                   >
-                    MAX
+                    全押
                   </button>
                 </div>
 
                 <button
                   onClick={() => handlePlayerRaise(0, raiseSliderVal)}
                   disabled={!isMyTurn}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-xs shadow-lg transition-all cursor-pointer disabled:opacity-40"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-xs shadow-lg transition-all cursor-pointer disabled:opacity-40 whitespace-nowrap"
                 >
-                  确认加注至 {raiseSliderVal}
+                  确认加注 {formatCompactChips(raiseSliderVal)}
                 </button>
               </motion.div>
             )}
@@ -1528,9 +1521,9 @@ export const GameTable: React.FC<GameTableProps> = ({
           <button
             onClick={() => handlePlayerFold(0)}
             disabled={!isMyTurn || round === 'Waiting'}
-            className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-rose-900 via-rose-950 to-slate-950 border-2 border-rose-700/80 text-rose-100 font-black text-xs sm:text-sm shadow-xl hover:border-rose-500 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-rose-900 via-rose-950 to-slate-950 border-2 border-rose-700/80 text-rose-100 font-black text-xs sm:text-sm shadow-xl hover:border-rose-500 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
           >
-            Fold (弃牌)
+            弃牌
           </button>
 
           {/* CHECK / CALL */}
@@ -1538,28 +1531,28 @@ export const GameTable: React.FC<GameTableProps> = ({
             <button
               onClick={() => handlePlayerCheck(0)}
               disabled={!isMyTurn || round === 'Waiting'}
-              className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-slate-700 via-slate-800 to-slate-950 border-2 border-slate-500 text-white font-black text-xs sm:text-sm shadow-xl hover:border-slate-400 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-slate-700 via-slate-800 to-slate-950 border-2 border-slate-500 text-white font-black text-xs sm:text-sm shadow-xl hover:border-slate-400 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             >
-              Check (过牌)
+              过牌
             </button>
           ) : (
             <button
               onClick={() => handlePlayerCall(0)}
               disabled={!isMyTurn || round === 'Waiting'}
-              className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-slate-700 via-slate-800 to-slate-950 border-2 border-slate-400 text-white font-black text-xs sm:text-sm shadow-xl hover:border-white active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-slate-700 via-slate-800 to-slate-950 border-2 border-slate-400 text-white font-black text-xs sm:text-sm shadow-xl hover:border-white active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             >
-              Call ({currentMaxBet - (myPlayer?.currentBet || 0)})
+              跟注 {formatCompactChips(currentMaxBet - (myPlayer?.currentBet || 0))}
             </button>
           )}
 
-          {/* RAISE / CALL ANY */}
+          {/* RAISE */}
           <button
             onClick={() => setShowRaisePanel(!showRaisePanel)}
             disabled={!isMyTurn || round === 'Waiting'}
-            className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-blue-700 via-blue-900 to-slate-950 border-2 border-blue-400 text-cyan-200 font-black text-xs sm:text-sm shadow-[0_0_15px_rgba(34,211,238,0.3)] hover:border-cyan-300 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+            className="flex-1 py-2.5 px-2 rounded-xl bg-gradient-to-b from-blue-700 via-blue-900 to-slate-950 border-2 border-blue-400 text-cyan-200 font-black text-xs sm:text-sm shadow-[0_0_15px_rgba(34,211,238,0.3)] hover:border-cyan-300 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1 whitespace-nowrap"
           >
-            <span>Raise</span>
-            {showRaisePanel ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            <span>加注</span>
+            {showRaisePanel ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronUp className="w-3.5 h-3.5 shrink-0" />}
           </button>
         </div>
 
@@ -1580,12 +1573,12 @@ export const GameTable: React.FC<GameTableProps> = ({
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 10 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-950 border-2 border-amber-500/60 rounded-3xl p-5 max-w-sm w-full text-left space-y-4 shadow-2xl"
+              className="bg-slate-950 border-2 border-amber-500/60 rounded-3xl p-5 max-w-sm w-full text-left space-y-3.5 shadow-2xl"
             >
               <div className="flex justify-between items-center border-b border-amber-500/30 pb-2">
-                <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
-                  <Menu className="w-4 h-4" />
-                  Final Sanctuary Poker 巡演功能菜单
+                <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2 whitespace-nowrap">
+                  <Menu className="w-4 h-4 shrink-0" />
+                  <span>舞台与牌局设置</span>
                 </h3>
                 <button
                   onClick={() => setShowMenuDrawer(false)}
@@ -1596,8 +1589,8 @@ export const GameTable: React.FC<GameTableProps> = ({
               </div>
 
               {/* Concert Music Switcher */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-purple-300 block">🎵 背景演唱会金曲:</span>
+              <div className="space-y-1.5">
+                <span className="text-xs font-bold text-purple-300 block whitespace-nowrap">🎵 巡演舞美与金曲</span>
                 <FloatingStageBar
                   currentSong={currentSong}
                   setCurrentSong={setCurrentSong}
@@ -1620,10 +1613,10 @@ export const GameTable: React.FC<GameTableProps> = ({
                     setShowMenuDrawer(false);
                     setShowGuideModal(true);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-200 border border-cyan-500/50 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_10px_rgba(34,211,238,0.2)]"
+                  className="w-full py-2.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-200 border border-cyan-500/50 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                 >
-                  <ClipboardList className="w-4 h-4 text-cyan-400" />
-                  <span>规则与战绩 (Rules & Stats)</span>
+                  <ClipboardList className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>德州规则说明</span>
                 </button>
 
                 {onReturnToLauncher && (
@@ -1632,10 +1625,10 @@ export const GameTable: React.FC<GameTableProps> = ({
                       setShowMenuDrawer(false);
                       onReturnToLauncher();
                     }}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(34,211,238,0.4)]"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                   >
-                    <LogOut className="w-4 h-4" />
-                    <span>返回启动大厅 (Return to Launcher)</span>
+                    <LogOut className="w-4 h-4 shrink-0" />
+                    <span>返回选场大厅</span>
                   </button>
                 )}
 
@@ -1644,10 +1637,10 @@ export const GameTable: React.FC<GameTableProps> = ({
                     setShowMenuDrawer(false);
                     setShowTourExitModal(true);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-200 border border-rose-500/40 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-200 border border-rose-500/40 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
                 >
-                  <LogOut className="w-4 h-4" />
-                  <span>离开桌子 (结算战绩)</span>
+                  <Award className="w-4 h-4 shrink-0" />
+                  <span>查看本场战绩</span>
                 </button>
               </div>
 
@@ -1676,31 +1669,31 @@ export const GameTable: React.FC<GameTableProps> = ({
               </div>
 
               <div>
-                <h3 className="text-base font-black text-white">
-                  本局游戏结算
+                <h3 className="text-base font-black text-white whitespace-nowrap">
+                  本局结算
                 </h3>
-                <p className="text-xs text-amber-300 mt-0.5">
-                  {winningDescription ? `获胜牌型：${winningDescription}` : '一局完美落幕'}
+                <p className="text-xs text-amber-300 mt-0.5 whitespace-nowrap truncate">
+                  {winningDescription ? `获胜牌型：${winningDescription}` : '对局结束'}
                 </p>
               </div>
 
-              <div className="bg-slate-950 border border-white/10 rounded-2xl p-3 text-left space-y-1.5 text-xs">
+              <div className="bg-slate-950 border border-white/10 rounded-2xl p-3 text-left space-y-1.5 text-xs whitespace-nowrap">
                 <div className="flex justify-between items-center text-slate-300">
-                  <span>当前已进行局数:</span>
+                  <span>已进行局数</span>
                   <span className="font-mono font-bold text-white">{handCount} 局</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-300">
-                  <span>个人胜场记录:</span>
+                  <span>个人胜场</span>
                   <span className="font-mono font-bold text-amber-300">{userWins} 胜</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-300">
-                  <span>圣所音符余额:</span>
-                  <span className="font-mono font-bold text-purple-300">🎵 {(myPlayer?.chips || 0).toLocaleString()}</span>
+                  <span>当前音符</span>
+                  <span className="font-mono font-bold text-purple-300">🎵 {formatCompactChips(myPlayer?.chips || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center text-slate-300">
-                  <span>累计净收益:</span>
+                  <span>本场盈亏</span>
                   <span className={`font-mono font-bold ${userNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {userNetProfit >= 0 ? `+${userNetProfit}` : userNetProfit} 音符
+                    {userNetProfit >= 0 ? `+${formatCompactChips(userNetProfit)}` : formatCompactChips(userNetProfit)}
                   </span>
                 </div>
               </div>
@@ -1708,10 +1701,10 @@ export const GameTable: React.FC<GameTableProps> = ({
               <div className="flex flex-col gap-2 pt-1">
                 <button
                   onClick={startNextRound}
-                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap"
                 >
-                  <span>继续下一局 (Next Hand)</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>下一局</span>
+                  <ArrowRight className="w-4 h-4 shrink-0" />
                 </button>
 
                 <button
@@ -1719,9 +1712,9 @@ export const GameTable: React.FC<GameTableProps> = ({
                     setShowRoundModal(false);
                     setShowTourExitModal(true);
                   }}
-                  className="w-full py-2 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold text-xs cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                  className="w-full py-2 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 font-bold text-xs cursor-pointer transition-all flex items-center justify-center gap-1.5 whitespace-nowrap"
                 >
-                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                  <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                   <span>离场结算</span>
                 </button>
               </div>
@@ -1743,60 +1736,57 @@ export const GameTable: React.FC<GameTableProps> = ({
               initial={{ scale: 0.9, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 15 }}
-              className="bg-slate-900 border border-amber-500/50 rounded-3xl p-5 max-w-md w-full text-center space-y-3 shadow-2xl"
+              className="bg-slate-900 border border-amber-500/50 rounded-3xl p-5 max-w-sm w-full text-center space-y-3 shadow-2xl"
             >
               <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center mx-auto text-amber-400">
                 <Award className="w-6 h-6" />
               </div>
 
               <div>
-                <h3 className="text-lg font-black text-white">
-                  Final Sanctuary 巡演扑克战绩榜
+                <h3 className="text-base font-black text-white whitespace-nowrap">
+                  本场巡演战绩
                 </h3>
-                <p className="text-xs text-amber-300 mt-0.5">
-                  感谢参与 Final Sanctuary 德州扑克音乐会对决！
-                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-left text-xs">
+              <div className="grid grid-cols-2 gap-2 text-left text-xs whitespace-nowrap">
                 <div className="bg-slate-950 p-2.5 rounded-2xl border border-white/10">
-                  <span className="text-[10px] text-slate-400 block mb-0.5">总对局数</span>
-                  <span className="text-base font-black font-mono text-white">{handCount} 局</span>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">总对局</span>
+                  <span className="text-sm font-black font-mono text-white">{handCount} 局</span>
                 </div>
                 <div className="bg-slate-950 p-2.5 rounded-2xl border border-white/10">
-                  <span className="text-[10px] text-slate-400 block mb-0.5">胜局数</span>
-                  <span className="text-base font-black font-mono text-amber-400">{userWins} 胜</span>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">胜场</span>
+                  <span className="text-sm font-black font-mono text-amber-400">{userWins} 胜</span>
                 </div>
                 <div className="bg-slate-950 p-2.5 rounded-2xl border border-white/10">
-                  <span className="text-[10px] text-slate-400 block mb-0.5">结余音符</span>
-                  <span className="text-base font-black font-mono text-purple-300">🎵 {(myPlayer?.chips || 0).toLocaleString()}</span>
+                  <span className="text-[10px] text-slate-400 block mb-0.5">当前音符</span>
+                  <span className="text-sm font-black font-mono text-purple-300">🎵 {formatCompactChips(myPlayer?.chips || 0)}</span>
                 </div>
                 <div className="bg-slate-950 p-2.5 rounded-2xl border border-white/10">
-                  <span className="text-[10px] text-slate-400 block mb-0.5">净盈亏音符</span>
-                  <span className={`text-base font-black font-mono ${userNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {userNetProfit >= 0 ? `+${userNetProfit}` : userNetProfit}
+                  <span className="text-[10px] text-slate-400 block mb-0.5">净盈亏</span>
+                  <span className={`text-sm font-black font-mono ${userNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {userNetProfit >= 0 ? `+${formatCompactChips(userNetProfit)}` : formatCompactChips(userNetProfit)}
                   </span>
                 </div>
               </div>
 
-              <div className="bg-purple-950/40 border border-purple-500/30 p-2 rounded-xl text-xs text-purple-200 flex justify-between items-center">
-                <span>个人最强牌型纪录:</span>
-                <span className="font-bold text-amber-300">{userBestHand}</span>
+              <div className="bg-purple-950/40 border border-purple-500/30 p-2 rounded-xl text-xs text-purple-200 flex justify-between items-center whitespace-nowrap">
+                <span>最佳牌型</span>
+                <span className="font-bold text-amber-300 truncate ml-2">{userBestHand}</span>
               </div>
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex gap-2 pt-1 whitespace-nowrap">
                 <button
                   onClick={() => setShowTourExitModal(false)}
                   className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs cursor-pointer transition-all"
                 >
-                  返回继续游戏
+                  继续对局
                 </button>
                 <button
                   onClick={resetWholeSession}
                   className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg cursor-pointer transition-all flex items-center justify-center gap-1"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>重新开始巡演</span>
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  <span>重置牌局</span>
                 </button>
               </div>
             </motion.div>
@@ -2095,12 +2085,12 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
         </div>
 
         {/* Center: Stacked Name & Chips */}
-        <div className="flex flex-col min-w-0 pr-0.5">
-          <span className="text-[9px] sm:text-[10px] font-bold text-white truncate max-w-[48px] sm:max-w-[70px] leading-tight">
+        <div className="flex flex-col min-w-0 pr-0.5 whitespace-nowrap">
+          <span className="text-[9px] sm:text-[10px] font-bold text-white truncate max-w-[52px] sm:max-w-[72px] leading-tight">
             {player.name}
           </span>
           <span className="text-[8px] sm:text-[9px] font-mono font-black text-amber-300 leading-tight">
-            💰 {player.chips}
+            💰 {formatCompactChips(player.chips)}
           </span>
         </div>
 
@@ -2128,9 +2118,9 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
 
       </div>
 
-      {/* Floating Action Badge below/above Pill */}
+      {/* Floating Action Badge below Pill */}
       {player.lastAction && (
-        <div className={`-mt-1.5 z-30 text-[8px] font-black px-2 py-0.5 rounded-full shadow border backdrop-blur-md uppercase tracking-wider ${
+        <div className={`-mt-1.5 z-30 text-[8px] font-black px-2 py-0.5 rounded-full shadow border backdrop-blur-md uppercase tracking-wider whitespace-nowrap ${
           player.isAllIn
             ? 'bg-amber-500 text-slate-950 border-amber-300 animate-pulse'
             : isFolded
@@ -2143,14 +2133,14 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
 
       {/* Showdown Hand Type Tag */}
       {(round === 'Showdown' || isWinner) && seatEval && !isFolded && (
-        <div className="mt-0.5 bg-slate-950/95 border border-amber-400/90 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-200 shadow-[0_0_10px_rgba(250,204,21,0.5)] truncate max-w-[95px] sm:max-w-[110px] text-center">
+        <div className="mt-0.5 bg-slate-950/95 border border-amber-400/90 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-200 shadow-[0_0_10px_rgba(250,204,21,0.5)] truncate max-w-[95px] sm:max-w-[110px] text-center whitespace-nowrap">
           ✨ {seatEval.handType}
         </div>
       )}
 
       {/* Floating Bet Chips on Felt */}
       {player.currentBet > 0 && (
-        <div className="mt-0.5 bg-black/90 border border-amber-400/60 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-300 shadow-md flex items-center gap-1">
+        <div className="mt-0.5 bg-black/90 border border-amber-400/60 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-300 shadow-md flex items-center gap-1 whitespace-nowrap">
           <MetallicPokerChip size="xs" amount={player.currentBet} selectedStage={selectedStage} isFloating={true} />
         </div>
       )}

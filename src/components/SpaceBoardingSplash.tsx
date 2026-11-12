@@ -6,21 +6,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ShieldCheck,
   Rocket,
   Zap,
-  Sparkles,
-  Lock,
-  Unlock,
-  Radio,
-  Globe,
-  Compass,
-  Cpu,
-  Eye,
   CheckCircle2,
-  ChevronRight,
-  Flame,
-  MousePointerClick
+  MousePointerClick,
 } from 'lucide-react';
 
 interface SpaceBoardingSplashProps {
@@ -35,23 +24,27 @@ export const SpaceBoardingSplash: React.FC<SpaceBoardingSplashProps> = ({ onEnte
     if (isWarping) return;
     setIsWarping(true);
 
-    // Sequence for space boarding warp drive animation
-    setTimeout(() => setWarpStage(1), 600);   // Identity verification
-    setTimeout(() => setWarpStage(2), 1400);  // Warp drive ignition
-    setTimeout(() => setWarpStage(3), 2200);  // Portal opening & entering metaverse
+    setTimeout(() => setWarpStage(1), 500);
+    setTimeout(() => setWarpStage(2), 1100);
     setTimeout(() => {
       onEnterLobby();
-    }, 3200);
+    }, 1800);
   };
 
+  const warpStatusText =
+    warpStage === 0
+      ? '身份验证通过'
+      : warpStage === 1
+      ? '对接圣所星舰'
+      : '曲速引擎就绪';
+
   return (
-    <div className="w-full h-full bg-[#070212] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none p-3 sm:p-6">
-      
+    <div className="w-full h-full bg-[#070212] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none p-4 sm:p-6">
       {/* BACKGROUND DEEP METAVERSE & WARP NEBULA */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#2e0854,#0d011d,#030008)] pointer-events-none" />
 
       {/* Cyber Grid Overlay */}
-      <div 
+      <div
         className="absolute inset-0 opacity-20 pointer-events-none"
         style={{
           backgroundImage: `
@@ -66,45 +59,38 @@ export const SpaceBoardingSplash: React.FC<SpaceBoardingSplashProps> = ({ onEnte
       <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-purple-600/20 blur-[130px] rounded-full pointer-events-none" />
       <div className="absolute -bottom-32 left-1/3 w-[500px] h-[300px] bg-fuchsia-600/20 blur-[120px] rounded-full pointer-events-none" />
 
-      {/* TOP BAR: GAMING LABS CERTIFIED RNG BADGE & STATUS */}
-      <div className="w-full max-w-4xl flex items-center justify-between z-20 pt-1 pb-2">
-        {/* Left: Cyber Agent Badge */}
-        <div className="flex items-center gap-2 bg-purple-950/80 border border-purple-500/50 px-3 py-1 rounded-full backdrop-blur-md shadow-[0_0_15px_rgba(168,85,247,0.3)]">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <span className="text-[10px] sm:text-xs font-mono font-bold text-purple-200 tracking-wider">
-            Final Sanctuary
+      {/* TOP BAR */}
+      <div className="w-full max-w-4xl flex items-center justify-between z-20 pt-1 pb-2 shrink-0">
+        <div className="flex items-center gap-2 bg-purple-950/80 border border-purple-500/50 px-3 py-1 rounded-full backdrop-blur-md shadow-[0_0_15px_rgba(168,85,247,0.3)] whitespace-nowrap shrink-0">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+          <span className="text-[11px] font-mono font-bold text-purple-200 tracking-wider">
+            FINAL SANCTUARY
           </span>
         </div>
 
-        {/* Right: Certified RNG Badge matching reference image */}
-        <div className="bg-white text-slate-900 px-2.5 py-1 rounded shadow-lg flex items-center gap-2 border border-slate-300">
-          <div className="bg-blue-900 text-white p-0.5 rounded">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-blue-900" />
+        <div className="bg-white text-slate-900 px-2.5 py-1 rounded-lg shadow-lg flex items-center gap-1.5 border border-slate-300 whitespace-nowrap shrink-0">
+          <div className="bg-blue-900 text-white p-0.5 rounded shrink-0">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 fill-blue-900" />
           </div>
-          <div className="flex flex-col text-left leading-none">
-            <span className="text-[10px] font-black tracking-tight text-blue-950">Gaming Labs</span>
-            <span className="text-[8px] font-extrabold text-red-600 uppercase tracking-tighter">Certified RNG</span>
-          </div>
+          <span className="text-[10px] font-black tracking-tight text-blue-950">RNG 公平认证</span>
         </div>
       </div>
 
       {/* SLEEK MINIMAL COSMIC METAVERSE EMBLEM */}
-      <div className="relative w-full max-w-xl my-auto flex flex-col items-center justify-center z-20 py-6">
+      <div className="relative w-full max-w-xl my-auto flex flex-col items-center justify-center z-20 py-4">
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.5 }}
           className="relative flex flex-col items-center text-center p-4 w-full"
         >
-          {/* Interactive Rocket Launch Button with Visual Click Cues (No text required) */}
           <motion.button
-            whileHover={{ scale: 1.1 }}
+            whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
             onClick={handleActivateMechanism}
             disabled={isWarping}
-            className="group relative my-2 cursor-pointer flex flex-col items-center justify-center focus:outline-none"
+            className="group relative my-3 cursor-pointer flex flex-col items-center justify-center focus:outline-none"
           >
-            {/* 1. Continuous Expanding Radar Ripple Rings (Visual click invitation) */}
             <motion.div
               animate={{ scale: [1, 1.8, 2.2], opacity: [0.7, 0.3, 0] }}
               transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
@@ -117,44 +103,44 @@ export const SpaceBoardingSplash: React.FC<SpaceBoardingSplashProps> = ({ onEnte
             />
 
             <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
-              {/* Outer glowing purple aura */}
               <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-600 blur-xl opacity-75 group-hover:opacity-100 transition-opacity animate-pulse" />
 
-              {/* Breathing Center Rocket Button */}
-              <motion.div 
+              <motion.div
                 animate={{ scale: [1, 1.06, 1] }}
-                transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
                 className="w-22 h-22 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-b from-purple-800 via-fuchsia-900 to-slate-950 border-2 border-fuchsia-300 shadow-[0_0_40px_rgba(232,121,249,0.9)] group-hover:shadow-[0_0_60px_rgba(232,121,249,1)] flex flex-col items-center justify-center transition-all z-10 relative overflow-hidden"
               >
-                {/* Internal shine sweep */}
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none" />
-
                 <Rocket className="w-10 h-10 sm:w-12 sm:h-12 text-white group-hover:text-amber-300 animate-bounce transition-colors" />
               </motion.div>
 
-              {/* Animated Finger Tap Cursor (Visual Indicator without words) */}
               <motion.div
-                animate={{ y: [0, -6, 0], scale: [1, 1.15, 1] }}
+                animate={{ y: [0, -5, 0], scale: [1, 1.12, 1] }}
                 transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
                 className="absolute -bottom-2 -right-2 z-20 bg-gradient-to-r from-amber-400 to-fuchsia-500 p-2 rounded-full border-2 border-white shadow-[0_0_20px_rgba(251,191,36,0.9)] flex items-center justify-center text-slate-950"
               >
-                <MousePointerClick className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950 fill-amber-200 animate-pulse" />
+                <MousePointerClick className="w-5 h-5 text-slate-950 fill-amber-200 animate-pulse" />
               </motion.div>
             </div>
           </motion.button>
 
-          <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-200 via-white to-fuchsia-300 mb-2 font-display">
+          <h1 className="text-2xl sm:text-4xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-200 via-white to-fuchsia-300 mb-2 font-display whitespace-nowrap">
             FINAL SANCTUARY
           </h1>
 
-          <div className="flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-purple-950/80 border border-purple-500/40 text-[10px] font-mono text-purple-300">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>QUANTUM ENGINE READY</span>
+          <div className="flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-purple-950/80 border border-purple-500/40 text-xs font-mono font-bold text-purple-200 whitespace-nowrap">
+            <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>点击星舰进入圣所牌桌</span>
           </div>
         </motion.div>
       </div>
 
-      {/* OVERLAY: COSMIC WARP DRIVE & METAVERSE BOARDING ANIMATION */}
+      {/* BOTTOM MINIMAL CAPTION */}
+      <div className="z-20 text-[10px] font-mono text-purple-300/60 whitespace-nowrap shrink-0">
+        SANCTUARY TOUR ARENA · 15 ALBUMS EDITION
+      </div>
+
+      {/* OVERLAY: STREAMLINED COSMIC WARP DRIVE */}
       <AnimatePresence>
         {isWarping && (
           <motion.div
@@ -163,70 +149,31 @@ export const SpaceBoardingSplash: React.FC<SpaceBoardingSplashProps> = ({ onEnte
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-[#05010f] z-50 flex flex-col items-center justify-center p-6 overflow-hidden"
           >
-            {/* Warp Speed Starfield Effect */}
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#581c87,#1e053b,#000000)]" />
-            
-            {/* Rotating Cyber Quantum Portal Rings */}
+
             <motion.div
               animate={{ rotate: 360, scale: [1, 1.3, 1.6, 2] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-              className="absolute w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] rounded-full border-4 border-dashed border-purple-400/60 shadow-[0_0_80px_rgba(168,85,247,0.8)] pointer-events-none"
-            />
-            <motion.div
-              animate={{ rotate: -360, scale: [1, 1.4, 1.8] }}
               transition={{ duration: 2.5, repeat: Infinity, ease: 'linear' }}
-              className="absolute w-[280px] h-[280px] sm:w-[450px] sm:h-[450px] rounded-full border-2 border-fuchsia-400/80 shadow-[0_0_60px_rgba(232,121,249,0.8)] pointer-events-none"
+              className="absolute w-[340px] h-[340px] sm:w-[520px] sm:h-[520px] rounded-full border-4 border-dashed border-purple-400/60 shadow-[0_0_80px_rgba(168,85,247,0.8)] pointer-events-none"
             />
 
-            {/* Center Starship Airlock & HUD Status Display */}
-            <div className="relative z-10 flex flex-col items-center text-center max-w-md bg-slate-950/90 border-2 border-fuchsia-400/90 p-6 rounded-3xl backdrop-blur-2xl shadow-[0_0_50px_rgba(232,121,249,0.8)]">
-              
-              <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(232,121,249,1)]">
-                <Rocket className="w-8 h-8 text-white animate-bounce" />
+            <div className="relative z-10 flex flex-col items-center text-center w-full max-w-xs bg-slate-950/90 border-2 border-fuchsia-400/90 px-6 py-5 rounded-3xl backdrop-blur-2xl shadow-[0_0_50px_rgba(232,121,249,0.8)] gap-3">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 flex items-center justify-center shadow-[0_0_25px_rgba(232,121,249,1)]">
+                <Rocket className="w-7 h-7 text-white animate-bounce" />
               </div>
 
-              <h2 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-200 via-white to-fuchsia-300 mb-2">
-                🚀 宇宙登船引擎启动中
+              <h2 className="text-lg font-black text-white whitespace-nowrap">
+                正在进入圣所大厅
               </h2>
 
-              {/* Dynamic Step Logs */}
-              <div className="w-full bg-black/80 border border-purple-500/50 p-3 rounded-xl font-mono text-xs text-purple-300 space-y-1.5 my-3 text-left">
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>[01] 代理人身份验证通过 (Agent Authenticated)</span>
-                </div>
-                {warpStage >= 1 && (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-2 text-cyan-300"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>[02] 正在对接圣所号飞船 (Docking Starship)</span>
-                  </motion.div>
-                )}
-                {warpStage >= 2 && (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-2 text-fuchsia-300"
-                  >
-                    <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
-                    <span>[03] 曲速引擎点火，穿梭元宇宙 (Warp Speed)</span>
-                  </motion.div>
-                )}
+              <div className="w-full bg-purple-950/80 border border-purple-500/40 px-3 py-1.5 rounded-full text-xs font-mono font-bold text-amber-300 flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <Zap className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+                <span>{warpStatusText}</span>
               </div>
-
-              <div className="flex items-center gap-2 text-amber-300 text-xs font-mono font-bold animate-pulse">
-                <Zap className="w-4 h-4 text-amber-400" />
-                <span>FINAL SANCTUARY ARENA READY...</span>
-              </div>
-
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 };

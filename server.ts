@@ -7,7 +7,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { Card, Round } from './src/types';
 import { evaluate7CardHand } from './src/utils/pokerEvaluator';
-import { JJ_ALBUM_STAGES } from './src/data/albumStages';
+import { JJ_ALBUM_STAGES, formatCompactChips } from './src/data/albumStages';
 
 // Use process.cwd() for CJS & ESM cross-compatibility (fixes dist/server.cjs startup crash)
 const ROOT_DIR = process.cwd();
@@ -212,10 +212,10 @@ interface Room {
 }
 
 const SERVER_BOT_POOL = [
-  { id: 'bot_jiangnan', name: '江南小过客 (AI)', avatar: '🌂' },
-  { id: 'bot_caocao', name: '枭雄曹操 (AI)', avatar: '⚔️' },
-  { id: 'bot_years', name: '千年时光旅人 (AI)', avatar: '⏳' },
-  { id: 'bot_love', name: '修炼爱情大师 (AI)', avatar: '🌸' },
+  { id: 'bot_jiangnan', name: '江南过客', avatar: '🌂' },
+  { id: 'bot_caocao', name: '枭雄曹操', avatar: '⚔️' },
+  { id: 'bot_years', name: '千年旅人', avatar: '⏳' },
+  { id: 'bot_love', name: '修炼爱情', avatar: '🌸' },
 ];
 
 const app = express();
@@ -492,7 +492,7 @@ function startServerHand(room: Room) {
       p.currentBet = sbAmt;
       p.totalBetInHand = sbAmt;
       p.isAllIn = p.chips === 0;
-      p.lastAction = 'SB (小盲)';
+      p.lastAction = '小盲';
       initialPot += sbAmt;
     } else if (idx === newBbIdx) {
       const bbAmt = Math.min(p.chips, room.bigBlind);
@@ -500,7 +500,7 @@ function startServerHand(room: Room) {
       p.currentBet = bbAmt;
       p.totalBetInHand = bbAmt;
       p.isAllIn = p.chips === 0;
-      p.lastAction = 'BB (大盲)';
+      p.lastAction = '大盲';
       initialPot += bbAmt;
     }
   });
@@ -511,7 +511,7 @@ function startServerHand(room: Room) {
 
   const firstToAct = (newBbIdx + 1) % numPlayers;
   room.activePlayerIndex = firstToAct;
-  room.toastMsg = `🎟️ 第 ${room.handCount} 局开始！庄家【${room.players[newDealerIdx].name}】，请轮流行动！`;
+  room.toastMsg = `第 ${room.handCount} 局 · 翻牌前`;
 
   scheduleCurrentTurn(room);
   broadcastGameState(room);
@@ -615,7 +615,7 @@ function processPlayerAction(
     player.isFolded = true;
     player.hasActedThisRound = true;
     player.lastAction = '弃牌';
-    room.toastMsg = `💨 [弃牌] ${player.name} 选择弃牌。`;
+    room.toastMsg = `${player.name} · 弃牌`;
   } else if (action === 'check') {
     if (toCall > 0) {
       // Cannot check when facing a bet; fallback to call
@@ -623,7 +623,7 @@ function processPlayerAction(
     }
     player.hasActedThisRound = true;
     player.lastAction = '过牌';
-    room.toastMsg = `🎤 [过牌] ${player.name} 选择过牌。`;
+    room.toastMsg = `${player.name} · 过牌`;
   } else if (action === 'call') {
     const actualCall = Math.min(player.chips, toCall);
     player.chips -= actualCall;
@@ -634,10 +634,10 @@ function processPlayerAction(
     if (player.chips === 0) {
       player.isAllIn = true;
       player.lastAction = '全押';
-      room.toastMsg = `🚀 [全押] ${player.name} 全押跟注 ${actualCall} 音符！`;
+      room.toastMsg = `${player.name} 全押 ${formatCompactChips(actualCall)}`;
     } else {
       player.lastAction = '跟注';
-      room.toastMsg = `🔊 [跟注] ${player.name} 跟注 ${actualCall} 圣所音符。`;
+      room.toastMsg = `${player.name} 跟注 ${formatCompactChips(actualCall)}`;
     }
   } else if (action === 'allin') {
     const allInAmt = player.chips;
@@ -657,7 +657,7 @@ function processPlayerAction(
         }
       });
     }
-    room.toastMsg = `🚀 [全押] ${player.name} 孤注一掷全押 ${allInAmt} 圣所音符！`;
+    room.toastMsg = `${player.name} 全押 ${formatCompactChips(allInAmt)}`;
   } else if (action === 'raise') {
     const minTarget = room.currentMaxBet === 0 ? room.bigBlind : room.currentMaxBet + room.bigBlind;
     const desiredTarget = typeof raiseAmount === 'number' ? raiseAmount : minTarget;
@@ -687,10 +687,10 @@ function processPlayerAction(
     if (player.chips === 0) {
       player.isAllIn = true;
       player.lastAction = '全押';
-      room.toastMsg = `🚀 [全押] ${player.name} 全押加注至 ${player.currentBet} 音符！`;
+      room.toastMsg = `${player.name} 全押 ${formatCompactChips(player.currentBet)}`;
     } else {
-      player.lastAction = `加注(${player.currentBet})`;
-      room.toastMsg = `🔥 [加注] ${player.name} 加注至 ${player.currentBet} 圣所音符！`;
+      player.lastAction = '加注';
+      room.toastMsg = `${player.name} 加注至 ${formatCompactChips(player.currentBet)}`;
     }
   }
 
@@ -705,11 +705,11 @@ function advanceTurnOrRound(room: Room) {
     const soleWinner = nonFolded[0];
     soleWinner.chips += room.pot;
     room.winnerIds = [soleWinner.id];
-    room.winningDescription = '对手全场弃牌';
+    room.winningDescription = '对手弃牌';
     room.round = 'Showdown';
     room.activePlayerIndex = -1;
     room.turnDeadline = 0;
-    room.toastMsg = `🏆 [本局结束] 其他玩家弃牌，${soleWinner.name} 赢下底池 ${room.pot} 圣所音符！`;
+    room.toastMsg = `${soleWinner.name} 赢 ${formatCompactChips(room.pot)}`;
 
     syncRoomAccountsToStore(room, [soleWinner.id]);
     broadcastGameState(room);
@@ -759,15 +759,15 @@ function advanceServerStreet(room: Room) {
   if (room.round === 'PreFlop') {
     room.communityCards.push(room.deck.pop()!, room.deck.pop()!, room.deck.pop()!);
     room.round = 'Flop';
-    room.toastMsg = '🌈 [翻牌圈] 揭开前 3 张公共牌！';
+    room.toastMsg = '翻牌圈 · Flop';
   } else if (room.round === 'Flop') {
     room.communityCards.push(room.deck.pop()!);
     room.round = 'Turn';
-    room.toastMsg = '✨ [转牌圈] 揭开第 4 张公共牌！';
+    room.toastMsg = '转牌圈 · Turn';
   } else if (room.round === 'Turn') {
     room.communityCards.push(room.deck.pop()!);
     room.round = 'River';
-    room.toastMsg = '🎭 [河牌圈] 揭开最后 1 张公共牌！';
+    room.toastMsg = '河牌圈 · River';
   } else if (room.round === 'River') {
     evaluateServerShowdown(room);
     return;
@@ -890,8 +890,8 @@ function evaluateServerShowdown(room: Room) {
 
   room.winningDescription = primaryDesc;
   room.toastMsg = primaryWinner
-    ? `👑 [摊牌结算] ${primaryWinner.name} 凭借【${primaryDesc}】赢取 ${primaryWonAmt} 圣所音符！`
-    : '👑 [摊牌结算] 本局结束！';
+    ? `${primaryWinner.name} 赢 ${formatCompactChips(primaryWonAmt)}`
+    : '本局结束';
 
   syncRoomAccountsToStore(room, winnerList);
   broadcastGameState(room);
@@ -945,13 +945,13 @@ function createRoomInstance(name: string, stageId: string, maxPlayers: number, i
     handCount: 0,
     winnerIds: [],
     winningDescription: '',
-    toastMsg: '🎵 欢迎进入圣所实时联机牌桌！',
+    toastMsg: '联机牌桌已就绪',
     turnDeadline: 0,
   };
 }
 
 function createSeatFromSession(session: PlayerSession, defaultChips: number): RoomSeat {
-  const chips = session.chips > 100 ? session.chips : defaultChips;
+  const chips = session.chips >= defaultChips ? session.chips : defaultChips;
   return {
     id: session.id,
     userId: session.userId,

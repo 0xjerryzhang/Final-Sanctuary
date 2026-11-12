@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { motion } from 'motion/react';
-import { AlbumStage } from '../data/albumStages';
+import { AlbumStage, formatCompactChips } from '../data/albumStages';
 
 interface MetallicPokerChipProps {
   amount?: number | string;
@@ -67,8 +67,10 @@ export const MetallicPokerChip: React.FC<MetallicPokerChipProps> = ({
     lg: 'w-11 h-11 text-xs',
   }[size];
 
+  const displayAmount = typeof amount === 'number' ? formatCompactChips(amount) : amount;
+
   const chipContent = (
-    <div className={`relative flex items-center justify-center ${className}`}>
+    <div className={`relative flex items-center justify-center shrink-0 ${className}`}>
       {/* Optional Stack shadow underneath */}
       {showStack && (
         <>
@@ -92,14 +94,14 @@ export const MetallicPokerChip: React.FC<MetallicPokerChipProps> = ({
           className={`w-full h-full rounded-full border ${innerRingBorder} bg-black/20 flex flex-col items-center justify-center leading-none text-center backdrop-blur-[1px] relative z-10`}
         >
           {/* Final Sanctuary Stamped Logo Engraving */}
-          <span className={`text-[6px] font-black font-mono tracking-tighter ${textColor} drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]`}>
-            SANCTUARY
+          <span className={`text-[5.5px] font-black font-mono tracking-tighter whitespace-nowrap ${textColor} drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]`}>
+            JJ
           </span>
 
           {/* Amount Badge if provided */}
-          {amount !== undefined && (
-            <span className={`text-[7px] font-extrabold ${textColor} -mt-0.5 leading-none`}>
-              {amount}
+          {displayAmount !== undefined && (
+            <span className={`text-[6.5px] font-extrabold whitespace-nowrap ${textColor} -mt-0.5 leading-none`}>
+              {displayAmount}
             </span>
           )}
         </div>

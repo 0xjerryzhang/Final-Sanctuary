@@ -32,6 +32,7 @@ import { wsService } from '../services/websocket';
 import { triggerHaptic } from '../utils/haptics';
 import { iosAudio } from '../utils/iosAudio';
 import { getApiUrl } from '../utils/apiConfig';
+import { formatCompactChips } from '../data/albumStages';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -642,11 +643,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   </div>
                 </div>
 
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 whitespace-nowrap">
                   <div className="text-xs font-mono text-purple-300">圣所音符</div>
                   <div className="text-base font-black text-amber-300 flex items-center justify-end gap-1">
-                    <Music className="w-4 h-4 text-fuchsia-400" />
-                    <span>{(chips ?? 0).toLocaleString()}</span>
+                    <Music className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                    <span>{formatCompactChips(chips ?? 0)}</span>
                   </div>
                 </div>
               </div>
