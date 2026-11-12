@@ -88,7 +88,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
   }, [isPlayingAudio]);
 
   return (
-    <div className="w-full h-full bg-[#0a021a] text-white font-sans relative overflow-y-auto flex flex-col justify-between items-center select-none p-3 sm:p-6 no-scrollbar">
+    <div className="w-full h-full bg-[#0a021a] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none p-3 sm:p-6 no-scrollbar touch-none">
       {/* 1. CYBER BACKGROUND GRID & PURPLE NEON LIGHTING */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,#2a084f,#0a021a,#03000a)] pointer-events-none" />
       
@@ -230,7 +230,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[380px] overflow-y-auto pr-1 no-scrollbar p-1"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 max-h-[380px] overflow-y-auto allow-scroll pr-1 no-scrollbar p-1"
             >
               {JJ_ALBUM_STAGES.map((stage) => {
                 const isSelected = selectedStage.id === stage.id;

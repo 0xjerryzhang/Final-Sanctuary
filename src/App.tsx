@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { GameTable } from './components/GameTable';
 import { CyberStartScreen } from './components/CyberStartScreen';
 import { SpaceBoardingSplash } from './components/SpaceBoardingSplash';
@@ -22,6 +22,36 @@ export default function App() {
   const [audienceSingActive, setAudienceSingActive] = useState(false);
   const [encoreActive, setEncoreActive] = useState(false);
 
+  // Lock viewport scroll/pull-to-refresh on touch devices
+  useEffect(() => {
+    const preventTouchMove = (e: TouchEvent) => {
+      let target = e.target as HTMLElement | null;
+      let canScroll = false;
+      while (target && target !== document.body) {
+        if (
+          target.classList &&
+          (target.classList.contains('allow-scroll') ||
+           target.classList.contains('overflow-y-auto') ||
+           target.classList.contains('overflow-auto'))
+        ) {
+          if (target.scrollHeight > target.clientHeight) {
+            canScroll = true;
+            break;
+          }
+        }
+        target = target.parentElement;
+      }
+      if (!canScroll) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('touchmove', preventTouchMove, { passive: false });
+    return () => {
+      document.removeEventListener('touchmove', preventTouchMove);
+    };
+  }, []);
+
   const handleEnterLobby = () => {
     setViewState('launcher');
   };
@@ -36,7 +66,7 @@ export default function App() {
   };
 
   return (
-    <div className="w-screen h-screen bg-[#070212] text-white font-sans relative overflow-hidden select-none">
+    <div className="fixed inset-0 w-full h-full h-[100dvh] bg-[#070212] text-white font-sans relative overflow-hidden select-none touch-none overscroll-none">
       {/* Global Network Status & iOS Reconnect Notifier */}
       <NetworkNotifier />
 

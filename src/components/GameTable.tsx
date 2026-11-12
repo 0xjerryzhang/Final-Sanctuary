@@ -14,7 +14,17 @@ import { FlippableCard } from './FlippableCard';
 import { FloatingStageBar } from './StageControls';
 import { MetallicPokerChip } from './MetallicPokerChip';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, RotateCcw, Play, HelpCircle, Disc, ChevronUp, ChevronDown, LogOut, ArrowRight, Award, ClipboardList, Menu, Eye, EyeOff, Music, Pause, SkipForward, Sparkles, Wand2 } from 'lucide-react';
+import { Trophy, RotateCcw, Play, HelpCircle, Disc, ChevronUp, ChevronDown, LogOut, ArrowRight, Award, ClipboardList, Menu, Eye, EyeOff, Music, Pause, SkipForward, Sparkles, Wand2, MessageSquare, Send, X } from 'lucide-react';
+
+interface ChatMessage {
+  id: string;
+  senderName: string;
+  avatar: string;
+  text: string;
+  timestamp: string;
+  isUser?: boolean;
+  isSystem?: boolean;
+}
 
 interface GameTableProps {
   currentSong: ConcertSong;
@@ -128,6 +138,69 @@ export const GameTable: React.FC<GameTableProps> = ({
     iosAudio.playClickSound();
   };
 
+  // Table Interactive Chat State
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    { id: '1', senderName: '牌桌荷官', avatar: '🎵', text: '欢迎加入演唱会扑克桌！祝大家把把牌运爆棚！', isSystem: true, timestamp: '12:00' },
+    { id: '2', senderName: '枭雄曹操', avatar: '⚔️', text: '东汉末年分三国，这局谁敢与我煮酒论英雄？', timestamp: '12:01' },
+    { id: '3', senderName: '江南小过客', avatar: '🌂', text: '风到这里就是粘，听着歌打牌就是享受。', timestamp: '12:01' },
+  ]);
+
+  // Interactive Chat Sender
+  const handleSendChat = (textToSend?: string) => {
+    const content = (textToSend || chatInput).trim();
+    if (!content) return;
+
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    const newMsg: ChatMessage = {
+      id: Date.now().toString(),
+      senderName: myPlayer?.name || '你 (林俊杰歌迷)',
+      avatar: '🎤',
+      text: content,
+      isUser: true,
+      timestamp: timeStr,
+    };
+
+    setChatMessages(prev => [...prev.slice(-30), newMsg]);
+    if (!textToSend) setChatInput('');
+    triggerHaptic('light');
+
+    // BOT random playful response
+    setTimeout(() => {
+      const activeBots = ['caocao', 'jiangnan', 'years', 'love'];
+      const randomBot = activeBots[Math.floor(Math.random() * activeBots.length)];
+      const botReplies: Record<string, string[]> = {
+        caocao: ['说得好！有胆识！', '胜负尚未可知，继续切磋！', '英雄所见略同！', '东汉末年，这局大家牌面都很硬！'],
+        jiangnan: ['江南雨未停，牌局正精彩～', '听着 JJ 的歌打牌真惬意。', '跟注玩玩看～', '缘分到了，这一把要赢！'],
+        years: ['一千年以后，希望这一把牌依然经典！', '牌局如人生，充满不确定。', '我看好你哦！', '这局心跳又乱了节奏！'],
+        love: ['修炼爱情，也修炼牌技！', '打牌要保持好心情～', '这把大家手气都不错！', '快乐或伤心都有你们陪伴！'],
+      };
+      const botNameMap: Record<string, { name: string; avatar: string }> = {
+        caocao: { name: '枭雄曹操', avatar: '⚔️' },
+        jiangnan: { name: '江南小过客', avatar: '🌂' },
+        years: { name: '千年时光旅人', avatar: '⏳' },
+        love: { name: '修炼爱情大师', avatar: '🌸' },
+      };
+      const replyList = botReplies[randomBot];
+      const replyText = replyList[Math.floor(Math.random() * replyList.length)];
+      const botInfo = botNameMap[randomBot];
+
+      setChatMessages(prev => [
+        ...prev.slice(-30),
+        {
+          id: (Date.now() + 1).toString(),
+          senderName: botInfo.name,
+          avatar: botInfo.avatar,
+          text: replyText,
+          timestamp: timeStr,
+        }
+      ]);
+    }, 1000);
+  };
+
   const botActionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize Players
@@ -157,7 +230,11 @@ export const GameTable: React.FC<GameTableProps> = ({
     setHandCount(0);
     setUserWins(0);
     setUserBestHand('暂无');
+    setShowChatDrawer(false);
+    setShowMenuDrawer(false);
+    setShowRaisePanel(false);
     setShowRoundModal(false);
+    setShowGuideModal(false);
     setShowTourExitModal(false);
     setToastMsg('🎵 音乐会巡演桌就绪！点击【开始第一局】拉开帷幕！');
   };
@@ -178,11 +255,17 @@ export const GameTable: React.FC<GameTableProps> = ({
     return newDeck;
   };
 
-  // Speech bubble
+  // Speech bubble & Chat notification
   const triggerBotSpeech = (botId: string, type: 'check' | 'call' | 'raise' | 'fold' | 'win') => {
+    // 玩家明确要求：过牌 (check) 或跟注 (call) 时去除头顶的自动文字内容！
+    if (type === 'check' || type === 'call') {
+      return;
+    }
+
     const dialogs = BOT_DIALOGS[botId]?.[type];
     if (dialogs && dialogs.length > 0) {
       const randomLine = dialogs[Math.floor(Math.random() * dialogs.length)];
+      // 只保留极短的加注/胜利时精简气泡
       setBotSpeech(prev => ({ ...prev, [botId]: randomLine }));
       setTimeout(() => {
         setBotSpeech(prev => {
@@ -190,7 +273,29 @@ export const GameTable: React.FC<GameTableProps> = ({
           delete updated[botId];
           return updated;
         });
-      }, 3500);
+      }, 2500);
+
+      // 同步一条精简聊天记录
+      const botNameMap: Record<string, { name: string; avatar: string }> = {
+        caocao: { name: '枭雄曹操', avatar: '⚔️' },
+        jiangnan: { name: '江南小过客', avatar: '🌂' },
+        years: { name: '千年时光旅人', avatar: '⏳' },
+        love: { name: '修炼爱情大师', avatar: '🌸' },
+      };
+      const botInfo = botNameMap[botId] || { name: 'AI 牌手', avatar: '🤖' };
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      
+      setChatMessages(prev => [
+        ...prev.slice(-30),
+        {
+          id: Date.now().toString(),
+          senderName: botInfo.name,
+          avatar: botInfo.avatar,
+          text: randomLine,
+          timestamp: timeStr,
+        }
+      ]);
     }
   };
 
@@ -305,8 +410,11 @@ export const GameTable: React.FC<GameTableProps> = ({
     setWinningDescription('');
     setBotSpeech({});
     setIsCardsFlipped(false);
+    setShowChatDrawer(false);
+    setShowMenuDrawer(false);
     setShowRaisePanel(false);
     setShowRoundModal(false);
+    setShowGuideModal(false);
     setIsDealing(true);
 
     const activePlayersCount = players.length;
@@ -660,6 +768,24 @@ export const GameTable: React.FC<GameTableProps> = ({
     ? evaluate7CardHand(myFullCards) 
     : null;
 
+  // Check if River card (5th community card) forms a combination with player's hole cards
+  const isRiverMatchedWithHole = (() => {
+    if (communityCards.length < 5 || !myPlayer?.cards || myPlayer.cards.length === 0 || !myCurrentEvaluation) {
+      return false;
+    }
+    const riverCard = communityCards[4];
+    const bestHandCards = myCurrentEvaluation.cards;
+    
+    // Check if River card is part of the best 5-card evaluation
+    const riverInBestHand = isCardInHand(riverCard, bestHandCards);
+    // Check if at least one hole card is part of the best 5-card evaluation
+    const holeInBestHand = myPlayer.cards.some(c => isCardInHand(c, bestHandCards));
+    // Must be a valid hand combination (not pure high card)
+    const isValidCombo = myCurrentEvaluation.handType !== '高牌';
+
+    return riverInBestHand && holeInBestHand && isValidCombo;
+  })();
+
   return (
     <div className="w-full h-full bg-[#090118] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none" id="main-poker-stage">
       
@@ -684,14 +810,26 @@ export const GameTable: React.FC<GameTableProps> = ({
           </span>
         </div>
 
-        {/* Right: Round button for Hamburger Menu */}
-        <button
-          onClick={() => setShowMenuDrawer(true)}
-          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-b from-fuchsia-950 to-slate-950 border border-fuchsia-400/80 text-fuchsia-300 flex items-center justify-center shadow-[0_0_12px_rgba(236,72,153,0.4)] hover:border-fuchsia-300 active:scale-95 cursor-pointer transition-all"
-          title="主菜单与设置"
-        >
-          <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
+        {/* Right Action Group: Chat + Hamburger Menu */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setShowChatDrawer(true)}
+            className="relative px-2.5 py-1.5 rounded-full bg-gradient-to-r from-purple-900 via-fuchsia-900 to-purple-950 border border-purple-400/80 text-purple-200 text-xs font-bold flex items-center gap-1 shadow-[0_0_12px_rgba(168,85,247,0.5)] hover:border-purple-300 active:scale-95 cursor-pointer transition-all"
+            title="牌桌互动聊天室"
+          >
+            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 animate-pulse" />
+            <span className="text-[10px] sm:text-xs font-bold whitespace-nowrap">聊天</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute -top-0.5 -right-0.5" />
+          </button>
+
+          <button
+            onClick={() => setShowMenuDrawer(true)}
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-b from-fuchsia-950 to-slate-950 border border-fuchsia-400/80 text-fuchsia-300 flex items-center justify-center shadow-[0_0_12px_rgba(236,72,153,0.4)] hover:border-fuchsia-300 active:scale-95 cursor-pointer transition-all"
+            title="主菜单与设置"
+          >
+            <Menu className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
+        </div>
       </div>
 
       {/* DYNAMIC CONCERT STAGE SPOTLIGHTS (动态舞台灯光光束扫描) */}
@@ -795,28 +933,28 @@ export const GameTable: React.FC<GameTableProps> = ({
         )}
       </AnimatePresence>
 
-      {/* 2. TOP HALF: PERSPECTIVE 3D POKER FELT TABLE (Reflects reference image) */}
-      <div className="relative w-full max-w-lg md:max-w-xl lg:max-w-2xl h-[46vh] min-h-[310px] flex flex-col justify-between items-center px-2 py-1 my-auto flex-shrink-0" id="top-arena">
+      {/* 2. TOP HALF: PERSPECTIVE 3D POKER FELT TABLE - ACCURACY BOUNDED STADIUM */}
+      <div className="relative w-full max-w-md sm:max-w-xl h-[48vh] min-h-[300px] max-h-[420px] flex flex-col items-center justify-between mx-auto my-auto px-2 py-1.5 flex-shrink-0" id="top-arena">
         
-        {/* Oval Felt Backdrop - RICH PURPLE VELVET */}
-        <div className="absolute inset-x-2 inset-y-1 rounded-[100px] border-4 border-purple-500/80 bg-[radial-gradient(ellipse_at_center,#3b0764,#210042,#0a0017)] shadow-[inset_0_0_40px_rgba(0,0,0,0.85),0_0_35px_rgba(168,85,247,0.4)] pointer-events-none overflow-hidden">
+        {/* Oval Felt Backdrop - RICH PURPLE VELVET STADIUM */}
+        <div className="absolute inset-x-2 inset-y-1 rounded-[80px] sm:rounded-[100px] border-4 border-amber-400/80 bg-[radial-gradient(ellipse_at_center,#2d0452,#14002e,#05000f)] shadow-[inset_0_0_50px_rgba(0,0,0,0.9),0_0_30px_rgba(168,85,247,0.4)] pointer-events-none overflow-hidden">
           {/* Outer wood/rim ring line */}
-          <div className="absolute inset-2 rounded-[92px] border border-fuchsia-400/40" />
+          <div className="absolute inset-2 rounded-[72px] sm:rounded-[92px] border border-amber-300/30" />
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center opacity-15">
-            <span className="font-display font-black text-3xl sm:text-4xl tracking-wider text-purple-200">FINAL SANCTUARY</span>
-            <span className="text-[9px] font-mono font-bold text-fuchsia-300 uppercase tracking-widest">PURPLE SANCTUARY ARENA</span>
+            <span className="font-display font-black text-2xl sm:text-4xl tracking-wider text-amber-200">FINAL SANCTUARY</span>
+            <span className="text-[8px] sm:text-[9px] font-mono font-bold text-fuchsia-300 uppercase tracking-widest">TEXAS HOLD'EM ARENA</span>
           </div>
         </div>
 
-        {/* Live announcement ticker */}
-        <div className="z-30 w-full px-4 pt-1">
-          <div className="bg-black/70 border border-amber-500/30 px-3 py-0.5 rounded-full text-[10px] font-bold text-amber-200 backdrop-blur-md text-center truncate shadow">
+        {/* Live announcement ticker - Centered constrained pill between top avatars */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 max-w-[150px] sm:max-w-[220px] z-10 pointer-events-none">
+          <div className="bg-black/85 border border-amber-500/40 px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold text-amber-200 backdrop-blur-md text-center truncate shadow">
             {toastMsg}
           </div>
         </div>
 
-        {/* TOP ROW BOT PLAYERS (Caocao & 1000Years) */}
-        <div className="w-full flex justify-between items-center z-20 px-3 pt-0.5">
+        {/* TOP ROW BOT PLAYERS (Caocao & 1000Years) - Absolute Positions with z-30 */}
+        <div className="absolute top-2.5 left-2 sm:left-4 z-30 origin-top-left">
           {players[2] && (
             <TablePlayerSeat
               player={players[2]}
@@ -826,13 +964,14 @@ export const GameTable: React.FC<GameTableProps> = ({
               isWinner={winnerIds.includes(players[2].id)}
               isDealer={dealerIndex === 2}
               round={round}
-              botSpeech={botSpeech[players[2].id]}
               position="top-left"
               communityCards={communityCards}
               selectedStage={selectedStage}
             />
           )}
+        </div>
 
+        <div className="absolute top-2.5 right-2 sm:right-4 z-30 origin-top-right">
           {players[3] && (
             <TablePlayerSeat
               player={players[3]}
@@ -842,7 +981,6 @@ export const GameTable: React.FC<GameTableProps> = ({
               isWinner={winnerIds.includes(players[3].id)}
               isDealer={dealerIndex === 3}
               round={round}
-              botSpeech={botSpeech[players[3].id]}
               position="top-right"
               communityCards={communityCards}
               selectedStage={selectedStage}
@@ -851,7 +989,7 @@ export const GameTable: React.FC<GameTableProps> = ({
         </div>
 
         {/* MIDDLE ROW BOT PLAYERS & CENTER POT / COMMUNITY CARDS */}
-        <div className="w-full flex items-center justify-between z-20 px-1 my-auto gap-1">
+        <div className="absolute top-[48%] -translate-y-1/2 left-2 sm:left-4 z-20 origin-left">
           {players[1] && (
             <TablePlayerSeat
               player={players[1]}
@@ -861,53 +999,65 @@ export const GameTable: React.FC<GameTableProps> = ({
               isWinner={winnerIds.includes(players[1].id)}
               isDealer={dealerIndex === 1}
               round={round}
-              botSpeech={botSpeech[players[1].id]}
               position="middle-left"
               communityCards={communityCards}
               selectedStage={selectedStage}
             />
           )}
+        </div>
 
-          {/* CENTER TABLE FELT: Pot + Community Cards */}
-          <div className="flex flex-col items-center justify-center gap-1 py-1 px-2 rounded-xl bg-black/60 border border-amber-500/30 backdrop-blur-md mx-1 shadow-2xl">
-            {/* Pot Badge with Floating Metallic Final Sanctuary Chips */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-amber-400/60 px-3 py-1 rounded-lg shadow-lg flex items-center gap-2">
-              <MetallicPokerChip size="sm" selectedStage={selectedStage} showStack={true} isFloating={true} />
-              <span className="text-[11px] font-mono text-amber-300 font-bold flex items-center gap-1">
-                Pot : <span className="text-white font-black text-sm">{pot}</span>
+        {/* CENTER TABLE FELT: Pot + Community Cards */}
+        <div className="absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-1 p-1 sm:p-1.5 rounded-xl bg-black/70 border border-amber-500/40 backdrop-blur-md shadow-2xl z-20 max-w-[46%] sm:max-w-[55%]">
+          {/* Pot Badge with Floating Metallic Final Sanctuary Chips */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border border-amber-400/60 px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg shadow-lg flex items-center gap-1 sm:gap-1.5">
+            <MetallicPokerChip size="sm" selectedStage={selectedStage} showStack={true} isFloating={true} />
+            <span className="text-[10px] sm:text-[11px] font-mono text-amber-300 font-bold flex items-center gap-1">
+              Pot : <span className="text-white font-black text-xs sm:text-sm">{pot}</span>
+            </span>
+          </div>
+
+          {/* Community Cards */}
+          <div className="flex gap-0.5 sm:gap-1.5 items-center justify-center p-0.5 sm:p-1 rounded-lg bg-emerald-950/60 border border-emerald-500/20 max-w-full overflow-x-auto">
+            {communityCards.length === 0 ? (
+              <span className="text-[9px] sm:text-[10px] text-emerald-300/60 font-mono italic px-2 py-0.5">
+                Waiting...
               </span>
-            </div>
+            ) : (
+              communityCards.map((card, cIdx) => {
+                const isCardGlowing = myCurrentEvaluation ? isCardInHand(card, myCurrentEvaluation.cards) : false;
+                const isRiverCard = cIdx === 4;
+                const isRiverHighlight = isRiverCard && isRiverMatchedWithHole;
 
-            {/* Community Cards */}
-            <div className="flex gap-1 items-center justify-center p-1 rounded-lg bg-emerald-950/60 border border-emerald-500/20 max-w-full">
-              {communityCards.length === 0 ? (
-                <span className="text-[10px] text-emerald-300/60 font-mono italic px-2 py-0.5">
-                  Waiting...
-                </span>
-              ) : (
-                communityCards.map((card, cIdx) => {
-                  const isCardGlowing = myCurrentEvaluation ? isCardInHand(card, myCurrentEvaluation.cards) : false;
-                  return (
+                return (
+                  <div key={cIdx} className="relative shrink-0">
                     <PlayingCard 
-                      key={cIdx} 
                       card={card} 
                       isFaceUp={true} 
                       size="sm" 
-                      isGlowing={isCardGlowing}
+                      isGlowing={isCardGlowing || isRiverHighlight}
+                      className={isRiverHighlight ? 'ring-2 ring-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.9)] animate-pulse' : ''}
                     />
-                  );
-                })
-              )}
-            </div>
-
-            {round === 'Showdown' && winningDescription && (
-              <div className="bg-yellow-500/20 border border-yellow-400/50 text-yellow-200 px-2 py-0.5 rounded-md text-[9px] font-bold text-center flex items-center gap-1 shadow max-w-full truncate">
-                <Trophy className="w-3 h-3 text-yellow-400 animate-bounce flex-shrink-0" />
-                <span className="truncate">{winningDescription}</span>
-              </div>
+                    {isRiverHighlight && (
+                      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-rose-500 to-fuchsia-600 text-white text-[8px] font-black px-1.5 py-0.2 rounded-full whitespace-nowrap shadow-[0_0_8px_rgba(245,158,11,0.8)] z-30 flex items-center gap-0.5 animate-bounce">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-200" />
+                        <span>河牌组合</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
 
+          {round === 'Showdown' && winningDescription && (
+            <div className="bg-yellow-500/20 border border-yellow-400/50 text-yellow-200 px-2 py-0.5 rounded-md text-[9px] font-bold text-center flex items-center gap-1 shadow max-w-full truncate">
+              <Trophy className="w-3 h-3 text-yellow-400 animate-bounce flex-shrink-0" />
+              <span className="truncate">{winningDescription}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="absolute top-[48%] -translate-y-1/2 right-2 sm:right-4 z-20 origin-right">
           {players[4] && (
             <TablePlayerSeat
               player={players[4]}
@@ -917,21 +1067,21 @@ export const GameTable: React.FC<GameTableProps> = ({
               isWinner={winnerIds.includes(players[4].id)}
               isDealer={dealerIndex === 4}
               round={round}
-              botSpeech={botSpeech[players[4].id]}
               position="middle-right"
               communityCards={communityCards}
+              selectedStage={selectedStage}
             />
           )}
         </div>
 
-        {/* BOTTOM OF FELT: Human Player's Table Badge & Edge Hand Type Prompt */}
-        <div className="w-full flex flex-col items-center justify-center z-20 pb-0.5 gap-1">
+        {/* BOTTOM OF FELT: Human Player's Table Badge */}
+        <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-full flex flex-col items-center justify-center z-20 gap-1">
           {/* Table Edge Hand Type Badge */}
           {round !== 'Waiting' && myPlayer?.cards && myPlayer.cards.length > 0 && myCurrentEvaluation && (
             <motion.div
               initial={{ scale: 0.85, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="badge-glowing-stream p-[1.5px] rounded-full shadow-[0_0_18px_rgba(34,211,238,0.7)]"
+              className="badge-glowing-stream p-[1.5px] rounded-full shadow-[0_0_18px_rgba(34,211,238,0.7)] hidden sm:flex"
             >
               <div className="bg-slate-950/95 border border-amber-300/90 px-3 py-0.5 sm:px-4 sm:py-1 rounded-full flex items-center gap-1.5 backdrop-blur-md">
                 <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse flex-shrink-0" />
@@ -955,29 +1105,28 @@ export const GameTable: React.FC<GameTableProps> = ({
             return (
               <div className="relative flex flex-col items-center">
                 {/* Table Badge */}
-                <div className={`px-3 py-1 rounded-xl border-2 shadow-xl flex items-center gap-2 backdrop-blur-md transition-all ${
+                <div className={`px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-xl border-2 shadow-xl flex items-center gap-1.5 backdrop-blur-md transition-all ${
                   isMyTurn ? 'bg-blue-600/90 border-cyan-300 ring-2 ring-cyan-400 animate-pulse' : 'bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-amber-400/60'
                 }`}>
-                  {/* Texas Position Badge */}
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-black tracking-wider ${myPosInfo.badgeStyle}`}>
+                  <span className={`px-1 py-0.2 rounded text-[8px] uppercase font-black tracking-wider ${myPosInfo.badgeStyle}`}>
                     {myPosInfo.code}
                   </span>
 
                   <div className="flex items-center gap-1">
                     <span className="text-xs">🎤</span>
-                    <span className="text-xs font-black text-white uppercase tracking-wider">
+                    <span className="text-[10px] sm:text-xs font-black text-white uppercase tracking-wider">
                       {myPlayer.name} ({myPlayer.lastAction || '在圈'})
                     </span>
                   </div>
 
-                  <span className="text-xs font-mono font-black text-amber-300">
+                  <span className="text-[10px] sm:text-xs font-mono font-black text-amber-300">
                     💰 {myPlayer.chips}
                   </span>
                 </div>
 
                 {/* Chips on felt with micro levitation */}
                 {myPlayer.currentBet > 0 && (
-                  <div className="absolute -top-7 bg-black/85 border border-amber-400/60 px-2 py-0.5 rounded-full text-[9px] font-mono text-amber-300 font-bold shadow-lg flex items-center gap-1 z-30">
+                  <div className="absolute -top-6 bg-black/85 border border-amber-400/60 px-2 py-0.5 rounded-full text-[8px] font-mono text-amber-300 font-bold shadow-lg flex items-center gap-1 z-30">
                     <MetallicPokerChip size="xs" amount={myPlayer.currentBet} selectedStage={selectedStage} isFloating={true} />
                   </div>
                 )}
@@ -1009,6 +1158,29 @@ export const GameTable: React.FC<GameTableProps> = ({
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center w-full">
+              {/* River Card Combination Match Highlight Banner */}
+              <AnimatePresence>
+                {isRiverMatchedWithHole && (
+                  <motion.div
+                    initial={{ scale: 0.85, opacity: 0, y: -6 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.85, opacity: 0, y: -6 }}
+                    className="mb-1 bg-gradient-to-r from-amber-400 via-rose-500 to-fuchsia-600 p-[1.5px] rounded-full shadow-[0_0_20px_rgba(245,158,11,0.8)] z-30"
+                  >
+                    <div className="bg-slate-950/90 border border-amber-300/80 px-3 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-md">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin-slow flex-shrink-0" />
+                      <span className="text-[10px] sm:text-xs font-black text-amber-300">✨ 河牌组合达成：</span>
+                      <span className="text-xs font-black text-white font-mono text-shadow-glow-cyan">
+                        【{myCurrentEvaluation?.handType}】
+                      </span>
+                      <span className="bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow tracking-wider">
+                        {myCurrentEvaluation?.description}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Hole Cards Container with 3D Flip */}
               <div className="relative flex justify-center items-center h-38 sm:h-44 w-full">
                 {/* Card 1 */}
@@ -1018,7 +1190,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                     isFlipped={isCardsFlipped || round === 'Showdown'}
                     onFlipToggle={handleToggleFlipCards}
                     size="2xl"
-                    isGlowing={myCurrentEvaluation ? isCardInHand(myPlayer?.cards[0], myCurrentEvaluation.cards) : false}
+                    isGlowing={(myCurrentEvaluation ? isCardInHand(myPlayer?.cards[0], myCurrentEvaluation.cards) : false) || isRiverMatchedWithHole}
                     rotationAngle={-8}
                   />
                 </div>
@@ -1030,7 +1202,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                     isFlipped={isCardsFlipped || round === 'Showdown'}
                     onFlipToggle={handleToggleFlipCards}
                     size="2xl"
-                    isGlowing={myCurrentEvaluation ? isCardInHand(myPlayer?.cards[1], myCurrentEvaluation.cards) : false}
+                    isGlowing={(myCurrentEvaluation ? isCardInHand(myPlayer?.cards[1], myCurrentEvaluation.cards) : false) || isRiverMatchedWithHole}
                     rotationAngle={8}
                   />
                 </div>
@@ -1429,7 +1601,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 10 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-amber-500/40 rounded-3xl p-5 max-w-md w-full text-left font-sans space-y-3 max-h-[85vh] overflow-y-auto"
+              className="bg-slate-900 border border-amber-500/40 rounded-3xl p-5 max-w-md w-full text-left font-sans space-y-3 max-h-[85vh] overflow-y-auto allow-scroll"
             >
               <div className="flex justify-between items-center border-b border-white/10 pb-2">
                 <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
@@ -1462,6 +1634,125 @@ export const GameTable: React.FC<GameTableProps> = ({
               >
                 我知道了
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 8. INTERACTIVE TABLE CHAT DRAWER / MODAL */}
+      <AnimatePresence>
+        {showChatDrawer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setShowChatDrawer(false)}
+          >
+            <motion.div
+              initial={{ y: '100%', opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-gradient-to-b from-slate-950 via-purple-950 to-slate-950 border-t-2 sm:border-2 border-purple-400/80 rounded-t-3xl sm:rounded-3xl p-4 max-w-md w-full font-sans space-y-3 max-h-[80vh] sm:max-h-[85vh] flex flex-col shadow-[0_0_35px_rgba(168,85,247,0.5)]"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-center border-b border-purple-500/30 pb-2.5 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-purple-900/80 border border-purple-400 flex items-center justify-center">
+                    <MessageSquare className="w-4 h-4 text-amber-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                      <span>演唱会牌桌互动聊天室</span>
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 text-[9px] px-1.5 py-0.2 rounded-full font-mono">LIVE</span>
+                    </h3>
+                    <p className="text-[10px] text-purple-300">与同桌 AI 牌友实时交流歌词与牌局！</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowChatDrawer(false)}
+                  className="w-7 h-7 rounded-full bg-slate-900 border border-purple-500/40 text-purple-300 hover:text-white font-bold text-sm flex items-center justify-center cursor-pointer active:scale-95 transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Chat Messages List */}
+              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 allow-scroll my-1 min-h-[200px] max-h-[320px]">
+                {chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${
+                      msg.isUser ? 'items-end' : msg.isSystem ? 'items-center' : 'items-start'
+                    }`}
+                  >
+                    {msg.isSystem ? (
+                      <div className="bg-purple-950/60 border border-purple-500/30 text-purple-200 text-[10px] px-3 py-1 rounded-full my-1 text-center font-mono shadow-sm">
+                        {msg.text}
+                      </div>
+                    ) : (
+                      <div className={`flex gap-2 max-w-[85%] ${msg.isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className="w-7 h-7 rounded-full bg-slate-900 border border-amber-400/60 flex items-center justify-center text-xs flex-shrink-0 shadow">
+                          {msg.avatar}
+                        </div>
+                        <div className="flex flex-col">
+                          <div className={`flex items-center gap-1.5 mb-0.5 ${msg.isUser ? 'justify-end' : 'justify-start'}`}>
+                            <span className="text-[10px] font-bold text-amber-200/90">{msg.senderName}</span>
+                            <span className="text-[8px] font-mono text-purple-300/60">{msg.timestamp}</span>
+                          </div>
+                          <div className={`p-2.5 rounded-2xl text-xs leading-relaxed shadow-md ${
+                            msg.isUser
+                              ? 'bg-gradient-to-r from-purple-700 to-fuchsia-700 text-white rounded-tr-none border border-fuchsia-400/60'
+                              : 'bg-slate-900/90 text-purple-100 rounded-tl-none border border-purple-500/40'
+                          }`}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick Preset Phrases */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 allow-scroll flex-shrink-0 pt-1 border-t border-purple-500/20">
+                {[
+                  '🎤 听歌打牌，真开心！',
+                  '🔥 牌面很硬，谁敢跟？',
+                  '🎴 梭哈（All-in）走起！',
+                  '🌂 期待下一首《江南》',
+                  '⚔️ 煮酒论英雄！',
+                ].map((phrase, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSendChat(phrase)}
+                    className="px-2.5 py-1 rounded-full bg-purple-950/80 border border-purple-500/40 hover:border-purple-300 text-purple-200 text-[10px] font-bold whitespace-nowrap active:scale-95 cursor-pointer transition-all flex-shrink-0"
+                  >
+                    {phrase}
+                  </button>
+                ))}
+              </div>
+
+              {/* Input Bar */}
+              <div className="flex gap-2 pt-1 flex-shrink-0">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
+                  placeholder="说点什么吧..."
+                  className="flex-1 bg-slate-900 border border-purple-500/50 rounded-xl px-3 py-2 text-xs text-white placeholder-purple-400/60 focus:outline-none focus:border-amber-400 font-sans shadow-inner"
+                />
+                <button
+                  onClick={() => handleSendChat()}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>发送</span>
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -1512,7 +1803,7 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
   isWinner,
   isDealer,
   round,
-  botSpeech,
+  position,
   communityCards = [],
   selectedStage,
 }) => {
@@ -1524,207 +1815,110 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
 
   const posInfo = getTexasPosition(playerIdx, dealerIndex, 5);
 
-  return (
-    <div className="relative flex flex-col items-center select-none shrink-0">
-      {/* Compact Seat Badge (Avatar + Position + Name + Chips + Action) */}
-      <div className={`flex flex-col items-center p-1.5 rounded-2xl border-2 backdrop-blur-md transition-all w-[76px] sm:w-[86px] shadow-lg ${
-        isFolded
-          ? 'bg-black/60 border-gray-800 opacity-40 grayscale'
-          : isActive
-          ? 'bg-gradient-to-b from-purple-900 via-purple-950 to-slate-950 border-purple-400 ring-2 ring-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.7)] z-30 scale-105'
-          : 'bg-gradient-to-b from-slate-900/90 via-slate-950/90 to-black/90 border-purple-500/40 hover:border-purple-400'
-      } ${isWinner ? 'ring-2 ring-amber-400 border-amber-300 bg-amber-950/80 shadow-[0_0_20px_rgba(245,158,11,0.8)] z-30' : ''}`}>
-        
-        {/* Header: Position Badge & Dealer Button */}
-        <div className="flex items-center justify-between w-full mb-1 px-0.5">
-          <span className={`px-1 py-0.2 rounded text-[7px] font-black uppercase tracking-wider ${posInfo.badgeStyle}`}>
-            {posInfo.code}
-          </span>
-          {isDealer && (
-            <span className="bg-rose-600 text-white text-[7px] font-black px-1 rounded shadow-sm border border-rose-300">
-              D
-            </span>
-          )}
-        </div>
+  const isRightSide = position ? position.includes('right') : false;
+  const isLeftSide = position ? position.includes('left') : false;
 
-        {/* Center Avatar Circle with Active Pulse */}
-        <div className="relative my-0.5">
-          <div className={`w-8 h-8 rounded-full bg-slate-900 border-2 flex items-center justify-center text-sm shadow-inner ${
-            isActive ? 'border-purple-300 bg-purple-950' : 'border-amber-400/60'
+  return (
+    <div className={`relative flex flex-col ${isRightSide ? 'items-end origin-right' : isLeftSide ? 'items-start origin-left' : 'items-center origin-center'} select-none shrink-0 z-20 max-w-full`}>
+      {/* Main Streamlined Horizontal Seat Pill */}
+      <div className={`relative flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-full border-2 backdrop-blur-md transition-all duration-300 shadow-md max-w-full ${
+        isLeftSide ? 'origin-left' : isRightSide ? 'origin-right' : 'origin-center'
+      } ${
+        isFolded
+          ? 'bg-slate-950/50 border-slate-800 opacity-40 grayscale'
+          : isWinner
+          ? 'bg-amber-950/90 border-amber-300 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.8)]'
+          : isActive
+          ? 'bg-purple-950/90 border-purple-400 ring-2 ring-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.7)] scale-105'
+          : 'bg-slate-950/85 border-purple-500/30 hover:border-purple-400'
+      }`}>
+        
+        {/* Left: Avatar Circle with Position / Dealer Badge */}
+        <div className="relative flex-shrink-0">
+          <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-900 border-2 flex items-center justify-center text-xs sm:text-sm shadow-inner ${
+            isActive ? 'border-purple-300 bg-purple-900' : 'border-amber-400/60'
           }`}>
             {player.avatar}
           </div>
+
+          {/* Position Badge Tag */}
+          <span className={`absolute -top-1 left-0 px-1 py-0.2 rounded text-[7px] font-black uppercase tracking-wider shadow-sm border ${posInfo.badgeStyle}`}>
+            {posInfo.code}
+          </span>
+
+          {/* Dealer Button Badge */}
+          {isDealer && (
+            <span className="absolute -bottom-1 -right-1 bg-rose-600 text-white text-[7px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center border border-white shadow-sm">
+              D
+            </span>
+          )}
+
+          {/* Active Player Pulse dot */}
           {isActive && (
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-slate-950 rounded-full animate-ping" />
+            <span className="absolute top-0 right-0 w-2 h-2 bg-emerald-400 border border-slate-950 rounded-full animate-ping" />
           )}
         </div>
 
-        {/* Player Name */}
-        <span className="text-[10px] font-bold text-white truncate w-full text-center leading-tight">
-          {player.name}
-        </span>
+        {/* Center: Stacked Name & Chips */}
+        <div className="flex flex-col min-w-0 pr-0.5">
+          <span className="text-[9px] sm:text-[10px] font-bold text-white truncate max-w-[48px] sm:max-w-[70px] leading-tight">
+            {player.name}
+          </span>
+          <span className="text-[8px] sm:text-[9px] font-mono font-black text-amber-300 leading-tight">
+            💰 {player.chips}
+          </span>
+        </div>
 
-        {/* Chips Count */}
-        <span className="text-[9px] font-mono font-black text-amber-300 text-center truncate w-full mt-0.5">
-          💰 {player.chips}
-        </span>
-
-        {/* Action Badge */}
-        {player.lastAction && (
-          <div className={`text-[8px] font-bold px-1 py-0.5 rounded text-center w-full mt-1 truncate ${
-            player.isAllIn 
-              ? 'bg-amber-500 text-slate-950 font-black animate-pulse' 
-              : isFolded 
-              ? 'bg-slate-800 text-slate-400' 
-              : 'bg-purple-950 text-purple-200 border border-purple-500/40'
-          }`}>
-            {player.lastAction}
+        {/* Mini Hole Cards (Bot Cards) */}
+        {round !== 'Waiting' && !isFolded && player.cards && player.cards.length > 0 && (
+          <div className="flex -space-x-1.5 ml-0.5 items-center flex-shrink-0">
+            {round === 'Showdown' || isWinner ? (
+              // Revealed Cards on Showdown using compact xs cards
+              player.cards.map((card, cIdx) => (
+                <PlayingCard key={cIdx} card={card} isFaceUp={true} size="xs" />
+              ))
+            ) : (
+              // Face down card backs during betting
+              <>
+                <div className="w-4 h-6 sm:w-5 sm:h-7 rounded bg-gradient-to-br from-purple-800 to-slate-950 border border-purple-400/60 shadow flex items-center justify-center text-[7px] text-purple-300 font-black">
+                  🎴
+                </div>
+                <div className="w-4 h-6 sm:w-5 sm:h-7 rounded bg-gradient-to-br from-purple-800 to-slate-950 border border-purple-400/60 shadow flex items-center justify-center text-[7px] text-purple-300 font-black -ml-2">
+                  🎴
+                </div>
+              </>
+            )}
           </div>
         )}
+
       </div>
 
-      {/* Showdown Text Summary */}
+      {/* Floating Action Badge below/above Pill */}
+      {player.lastAction && (
+        <div className={`-mt-1.5 z-30 text-[8px] font-black px-2 py-0.5 rounded-full shadow border backdrop-blur-md uppercase tracking-wider ${
+          player.isAllIn
+            ? 'bg-amber-500 text-slate-950 border-amber-300 animate-pulse'
+            : isFolded
+            ? 'bg-slate-900/90 text-slate-400 border-slate-700'
+            : 'bg-gradient-to-r from-purple-900 via-fuchsia-900 to-slate-900 text-purple-200 border-purple-400/80 shadow-[0_0_8px_rgba(168,85,247,0.5)]'
+        }`}>
+          {player.lastAction}
+        </div>
+      )}
+
+      {/* Showdown Hand Type Tag */}
       {(round === 'Showdown' || isWinner) && seatEval && !isFolded && (
-        <div className="mt-1 bg-slate-950/95 border border-amber-400/90 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-200 shadow-[0_0_10px_rgba(250,204,21,0.5)] truncate max-w-[86px] text-center">
+        <div className="mt-0.5 bg-slate-950/95 border border-amber-400/90 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-200 shadow-[0_0_10px_rgba(250,204,21,0.5)] truncate max-w-[95px] sm:max-w-[110px] text-center">
           ✨ {seatEval.handType}
         </div>
       )}
 
-      {/* Floating Bet Chips */}
+      {/* Floating Bet Chips on Felt */}
       {player.currentBet > 0 && (
-        <div className="mt-1 bg-black/90 border border-amber-400/60 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-300 shadow-md flex items-center gap-1">
+        <div className="mt-0.5 bg-black/90 border border-amber-400/60 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold text-amber-300 shadow-md flex items-center gap-1">
           <MetallicPokerChip size="xs" amount={player.currentBet} selectedStage={selectedStage} isFloating={true} />
         </div>
       )}
-    </div>
-  );
-};
-
-// Sub-component for clean Player Seat rendering (supports left, right, center layout alignments)
-interface PlayerSeatProps {
-  player: Player;
-  isActive: boolean;
-  isWinner: boolean;
-  isDealer: boolean;
-  isSB: boolean;
-  isBB: boolean;
-  round: Round;
-  botSpeech?: string;
-  position?: 'left' | 'right' | 'center';
-  isHuman?: boolean;
-}
-
-const PlayerSeat: React.FC<PlayerSeatProps> = ({
-  player,
-  isActive,
-  isWinner,
-  isDealer,
-  isSB,
-  isBB,
-  round,
-  botSpeech,
-  position = 'center',
-  isHuman = false,
-}) => {
-  // Determine speech bubble positioning class based on table side
-  let speechBubblePosClass = 'left-1/2 -translate-x-1/2';
-  if (position === 'right') {
-    speechBubblePosClass = 'right-0 translate-x-0';
-  } else if (position === 'left') {
-    speechBubblePosClass = 'left-0 translate-x-0';
-  }
-
-  // Determine scale origin class so active state ring doesn't extend off screen
-  let scaleOriginClass = 'origin-center';
-  if (position === 'right') {
-    scaleOriginClass = 'origin-right';
-  } else if (position === 'left') {
-    scaleOriginClass = 'origin-left';
-  }
-
-  const isFolded = player.isFolded;
-  const isAllIn = player.isAllIn;
-
-  return (
-    <div className={`relative flex flex-col ${position === 'right' ? 'items-end' : position === 'left' ? 'items-start' : 'items-center'} select-none max-w-full`}>
-      
-      {/* Seat Container */}
-      <div
-        className={`flex flex-col items-center p-1 sm:p-1.5 rounded-2xl backdrop-blur-md border transition-all duration-300 ${
-          isHuman ? 'w-[110px] sm:w-[135px]' : 'w-[82px] sm:w-[102px] flex-shrink-0'
-        } ${scaleOriginClass} ${
-          isFolded
-            ? 'bg-slate-950/40 border-white/5 opacity-50 grayscale'
-            : isActive
-            ? 'bg-purple-600/35 border-purple-400 ring-2 ring-purple-400/90 scale-105 shadow-[0_0_20px_rgba(168,85,247,0.5)] z-30'
-            : 'bg-slate-950/85 border-white/15 hover:border-white/30'
-        } ${isWinner ? 'ring-2 ring-yellow-400 bg-amber-500/20 shadow-[0_0_25px_rgba(250,204,21,0.7)] z-30' : ''}`}
-      >
-        {/* Name & Role Badges & Chips */}
-        <div className="flex items-center gap-1.5 w-full justify-between mb-1">
-          <div className="flex items-center gap-1 min-w-0">
-            <span className="text-xs sm:text-sm flex-shrink-0">{player.avatar}</span>
-            <span className="text-[10px] sm:text-xs font-bold text-white truncate max-w-[55px] sm:max-w-[70px]">
-              {player.name}
-            </span>
-          </div>
-
-          {/* Blind & Dealer Badges */}
-          <div className="flex items-center gap-0.5 flex-shrink-0">
-            {isDealer && <span className="bg-red-500 text-white text-[7px] font-black px-1 rounded-sm shadow">D</span>}
-            {isSB && <span className="bg-indigo-500 text-white text-[7px] font-black px-1 rounded-sm shadow">SB</span>}
-            {isBB && <span className="bg-cyan-500 text-white text-[7px] font-black px-1 rounded-sm shadow">BB</span>}
-          </div>
-        </div>
-
-        {/* Chips Count */}
-        <div className="text-[9px] sm:text-[10px] font-mono font-bold text-purple-300 bg-purple-950/80 border border-purple-500/30 px-1.5 py-0.5 rounded-full w-full text-center truncate mb-1">
-          💰 {player.chips}
-        </div>
-
-        {/* Hole Cards */}
-        <div className="flex -space-x-2 sm:-space-x-2.5 justify-center my-0.5 max-w-full">
-          {player.cards.length === 0 ? (
-            <div className="w-12 h-9 border border-dashed border-white/15 rounded-lg flex items-center justify-center text-[8px] text-slate-500 font-mono">
-              WAIT
-            </div>
-          ) : (
-            player.cards.map((card, cIdx) => (
-              <PlayingCard
-                key={cIdx}
-                card={card}
-                isFaceUp={isHuman || round === 'Showdown'}
-                size={isHuman ? 'md' : 'sm'}
-                isHighlighted={isWinner}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Current Bet Badge */}
-        {player.currentBet > 0 && (
-          <div className="mt-1 flex items-center gap-1 bg-black/90 border border-purple-400/40 px-2 py-0.5 rounded-full shadow-md">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-            <span className="text-[8px] sm:text-[9px] font-mono font-bold text-purple-200 whitespace-nowrap">
-              注: {player.currentBet}
-            </span>
-          </div>
-        )}
-
-        {/* Action Status Tag */}
-        {player.lastAction && (
-          <div className={`text-[8px] sm:text-[9px] text-center font-bold px-1.5 py-0.5 rounded-md mt-1 w-full truncate border shadow-sm ${
-            isAllIn
-              ? 'bg-amber-500/80 text-white border-amber-300 font-black animate-pulse'
-              : isFolded
-              ? 'bg-slate-800 text-slate-400 border-slate-700'
-              : 'bg-purple-900/80 text-purple-100 border-purple-500/40'
-          }`}>
-            {player.lastAction}
-          </div>
-        )}
-
-      </div>
     </div>
   );
 };

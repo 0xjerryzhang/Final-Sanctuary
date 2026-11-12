@@ -13,7 +13,7 @@ interface PlayingCardProps {
   isFaceUp?: boolean;
   isHighlighted?: boolean;
   isGlowing?: boolean;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   className?: string;
 }
 
@@ -53,6 +53,14 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
 
   // Size specific layout styles
   const sizeConfig = {
+    xs: {
+      box: 'w-5 sm:w-6 h-8 sm:h-9 rounded p-0.5',
+      topVal: 'text-[8px] sm:text-[9px] font-black',
+      topSuit: 'text-[7px] sm:text-[8px]',
+      centerSuit: 'text-[9px] sm:text-[10px]',
+      centerIcon: 'w-2 h-2',
+      showCenterIllustration: false,
+    },
     sm: {
       box: 'w-7 sm:w-9 h-11 sm:h-13 rounded-md p-0.5 sm:p-1',
       topVal: 'text-[9px] sm:text-xs font-black',
