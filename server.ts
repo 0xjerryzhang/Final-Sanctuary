@@ -1244,7 +1244,7 @@ app.get('/api/bilibili-audio', async (req, res) => {
 
 // REST API Cloud User Account Authentication & Persistence
 app.post('/api/user/auth', (req, res) => {
-  const { userId, nickname, avatar, email } = req.body;
+  const { userId, nickname, avatar, email, username } = req.body;
   const user = userId ? userStore.get(userId) : undefined;
 
   // 不再自动建匿名号：只有已注册（绑定邮箱）的账号才能认证
@@ -1255,6 +1255,21 @@ app.post('/api/user/auth', (req, res) => {
   if (nickname) user.nickname = nickname;
   if (avatar) user.avatar = avatar;
   if (email && !user.email) user.email = email;
+  // Custom user-facing ID (username): 3-20 chars, letters/digits/_/-, unique.
+  // The internal id (jj_user_...) stays the primary key and is never changed.
+  if (typeof username === 'string' && username.trim()) {
+    const name = username.trim();
+    if (!/^[A-Za-z0-9_-]{3,20}$/.test(name)) {
+      return res.status(400).json({ success: false, message: 'ID 需为 3-20 位字母、数字、下划线或连字符' });
+    }
+    const taken = Array.from(userStore.values()).some(
+      (u) => u.id !== user.id && u.username && u.username.toLowerCase() === name.toLowerCase()
+    );
+    if (taken) {
+      return res.status(400).json({ success: false, message: '该 ID 已被占用，换一个试试' });
+    }
+    user.username = name;
+  }
   user.updatedAt = Date.now();
 
   saveDatabase();

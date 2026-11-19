@@ -85,6 +85,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       return '圣所乐迷';
     }
   });
+  // User-facing custom ID (username). Shown as "ID" in the profile card;
+  // the long internal jj_user_... id stays the primary key and is hidden.
+  const [username, setUsername] = useState<string>(() => {
+    try {
+      return localStorage.getItem('jj_user_username') || '';
+    } catch {
+      return '';
+    }
+  });
   const [avatar, setAvatar] = useState<string>(() => {
     try {
       return localStorage.getItem('jj_user_avatar') || DEFAULT_AVATAR;
@@ -271,6 +280,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           setUserId(json.user.id || '');
           setUserEmail(json.user.email || '');
           setNickname(json.user.nickname || '圣所乐迷');
+          if (json.user.username) setUsername(json.user.username);
           setAvatar(json.user.avatar || DEFAULT_AVATAR);
           setChips(typeof json.user.chips === 'number' ? json.user.chips : 10000);
           setWins(json.user.wins || 0);
@@ -282,6 +292,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             if (json.user.id) localStorage.setItem('jj_user_id', json.user.id);
             if (json.user.email) localStorage.setItem('jj_user_email', json.user.email);
             if (json.user.nickname) localStorage.setItem('jj_user_nickname', json.user.nickname);
+            if (json.user.username) localStorage.setItem('jj_user_username', json.user.username);
             if (json.user.avatar) localStorage.setItem('jj_user_avatar', json.user.avatar);
             if (json.user.suiAddress) localStorage.setItem('jj_sui_address', json.user.suiAddress);
             if (json.user.suiProvider) localStorage.setItem('jj_sui_provider', json.user.suiProvider);
@@ -427,6 +438,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   // Update Profile Save
   const handleSaveProfile = async () => {
     try {
+      const trimmedUsername = username.trim();
+      if (trimmedUsername && !/^[A-Za-z0-9_-]{3,20}$/.test(trimmedUsername)) {
+        setFeedback({ type: 'error', msg: 'ID 需为 3-20 位字母、数字、下划线或连字符' });
+        return;
+      }
       const res = await fetch(getApiUrl('/api/user/auth'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -435,12 +451,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           nickname,
           avatar,
           email: userEmail,
+          username: trimmedUsername || undefined,
         }),
       });
 
+      const json = await res.json().catch(() => null);
       if (res.ok) {
-        const json = await res.json();
         if (json && json.user) {
+          if (json.user.username) {
+            setUsername(json.user.username);
+            try {
+              localStorage.setItem('jj_user_username', json.user.username);
+            } catch {}
+          }
           try {
             localStorage.setItem('jj_user_nickname', json.user.nickname);
             localStorage.setItem('jj_user_avatar', json.user.avatar);
@@ -449,9 +472,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           setIsSaved(true);
           setTimeout(() => setIsSaved(false), 2500);
         }
+      } else {
+        setFeedback({ type: 'error', msg: (json && json.message) || '保存失败，请稍后再试' });
       }
     } catch (e) {
       console.error('Save failed', e);
+      setFeedback({ type: 'error', msg: '网络连接异常，请检查网络设置' });
     }
   };
 
@@ -804,7 +830,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                     <div className="text-[10px] font-mono text-emerald-300 mt-0.5 flex items-center gap-1">
                       <span>📧 {userEmail}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-purple-400">ID: {userId || '已连线'}</div>
+                    <div className="text-[10px] font-mono text-purple-400">ID: {username || userId || '已连线'}</div>
                   </div>
                 </div>
 
@@ -956,6 +982,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   onChange={(e) => setNickname(e.target.value)}
                   className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-fuchsia-400 font-bold"
                 />
+              </div>
+
+              {/* Edit Custom ID (username) */}
+              <div>
+                <label className="text-xs font-mono text-purple-300 block mb-1">自定义 ID</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="3-20 位字母、数字、下划线或连字符"
+                  className="w-full bg-slate-950 border border-purple-500/40 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-fuchsia-400 font-mono"
+                />
+                <div className="text-[10px] font-mono text-purple-300/70 mt-1">个人中心显示的 ID，保存后全站唯一，改好点下方「保存资料修改」生效。</div>
               </div>
 
               {/* Stats Overview */}
