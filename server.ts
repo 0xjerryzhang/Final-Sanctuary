@@ -1558,7 +1558,9 @@ app.post('/api/user/checkin', (req, res) => {
   }
 
   const user = userStore.get(userId)!;
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Daily boundary in Asia/Shanghai (UTC+8), matching the players' local day.
+  // (UTC date would roll over at 08:00 local and allow a second claim.)
+  const todayStr = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 
   if (user.lastCheckinDate === todayStr) {
     return res.json({

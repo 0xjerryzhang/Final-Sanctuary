@@ -94,6 +94,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       return '';
     }
   });
+  // The last *saved* ID, shown in the profile card. The input above edits
+  // the draft `username`; the card only changes after a successful save,
+  // so a rejected (invalid/taken) ID never appears as if it were saved.
+  const [savedUsername, setSavedUsername] = useState<string>(() => {
+    try {
+      return localStorage.getItem('jj_user_username') || '';
+    } catch {
+      return '';
+    }
+  });
+  // Today's date in Asia/Shanghai (UTC+8), matching the server check-in day.
+  const todayStrUTC8 = () => new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   const [avatar, setAvatar] = useState<string>(() => {
     try {
       return localStorage.getItem('jj_user_avatar') || DEFAULT_AVATAR;
@@ -280,7 +292,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           setUserId(json.user.id || '');
           setUserEmail(json.user.email || '');
           setNickname(json.user.nickname || '圣所乐迷');
-          if (json.user.username) setUsername(json.user.username);
+          if (json.user.username) {
+            setUsername(json.user.username);
+            setSavedUsername(json.user.username);
+          }
+          if (json.user.lastCheckinDate) {
+            setHasCheckedInToday(json.user.lastCheckinDate === todayStrUTC8());
+          }
           setAvatar(json.user.avatar || DEFAULT_AVATAR);
           setChips(typeof json.user.chips === 'number' ? json.user.chips : 10000);
           setWins(json.user.wins || 0);
@@ -293,6 +311,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             if (json.user.email) localStorage.setItem('jj_user_email', json.user.email);
             if (json.user.nickname) localStorage.setItem('jj_user_nickname', json.user.nickname);
             if (json.user.username) localStorage.setItem('jj_user_username', json.user.username);
+            if (json.user.lastCheckinDate) localStorage.setItem('jj_last_checkin_date', json.user.lastCheckinDate);
             if (json.user.avatar) localStorage.setItem('jj_user_avatar', json.user.avatar);
             if (json.user.suiAddress) localStorage.setItem('jj_sui_address', json.user.suiAddress);
             if (json.user.suiProvider) localStorage.setItem('jj_sui_provider', json.user.suiProvider);
@@ -405,6 +424,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         setUserId(json.user.id);
         setUserEmail(json.user.email || formEmail);
         setNickname(json.user.nickname || nickname);
+        if (json.user.username) {
+          setUsername(json.user.username);
+          setSavedUsername(json.user.username);
+        }
+        if (json.user.lastCheckinDate) {
+          setHasCheckedInToday(json.user.lastCheckinDate === todayStrUTC8());
+        }
         setAvatar(json.user.avatar || avatar);
         setChips(typeof json.user.chips === 'number' ? json.user.chips : 10000);
         setWins(json.user.wins || 0);
@@ -417,6 +443,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           localStorage.setItem('jj_user_email', json.user.email || formEmail);
           localStorage.setItem('jj_user_nickname', json.user.nickname);
           localStorage.setItem('jj_user_avatar', json.user.avatar);
+          if (json.user.username) localStorage.setItem('jj_user_username', json.user.username);
+          if (json.user.lastCheckinDate) localStorage.setItem('jj_last_checkin_date', json.user.lastCheckinDate);
           if (json.user.suiAddress) localStorage.setItem('jj_sui_address', json.user.suiAddress);
           if (json.user.suiProvider) localStorage.setItem('jj_sui_provider', json.user.suiProvider);
         } catch {}
@@ -441,6 +469,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       const trimmedUsername = username.trim();
       if (trimmedUsername && !/^[A-Za-z0-9_-]{3,20}$/.test(trimmedUsername)) {
         setFeedback({ type: 'error', msg: 'ID 需为 3-20 位字母、数字、下划线或连字符' });
+        setTimeout(() => setFeedback(null), 4000);
         return;
       }
       const res = await fetch(getApiUrl('/api/user/auth'), {
@@ -460,6 +489,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         if (json && json.user) {
           if (json.user.username) {
             setUsername(json.user.username);
+            setSavedUsername(json.user.username);
             try {
               localStorage.setItem('jj_user_username', json.user.username);
             } catch {}
@@ -474,10 +504,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         }
       } else {
         setFeedback({ type: 'error', msg: (json && json.message) || '保存失败，请稍后再试' });
+        setTimeout(() => setFeedback(null), 4000);
       }
     } catch (e) {
       console.error('Save failed', e);
       setFeedback({ type: 'error', msg: '网络连接异常，请检查网络设置' });
+      setTimeout(() => setFeedback(null), 4000);
     }
   };
 
@@ -830,7 +862,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                     <div className="text-[10px] font-mono text-emerald-300 mt-0.5 flex items-center gap-1">
                       <span>📧 {userEmail}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-purple-400">ID: {username || userId || '已连线'}</div>
+                    <div className="text-[10px] font-mono text-purple-400">ID: {savedUsername || userId || '已连线'}</div>
                   </div>
                 </div>
 
