@@ -359,7 +359,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-base font-black text-rose-200 whitespace-nowrap">绿色游戏公约</h3>
-                  <p className="text-[11px] text-rose-300/80 font-mono whitespace-nowrap">纯娱乐竞技 · 无充值变现</p>
+                  <p className="text-[11px] text-rose-300/80 font-mono whitespace-nowrap">纯娱乐竞技 · 虚拟筹码 · 不可变现</p>
                 </div>
               </div>
 
@@ -367,6 +367,11 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
                 <div className="p-3 rounded-2xl bg-slate-950/90 border border-amber-500/40 flex items-center gap-2.5">
                   <Gift className="w-4 h-4 text-amber-300 shrink-0" />
                   <span>注册赠 <strong>130.7K</strong> 圣所音符，每日签到领 <strong>3,270</strong> 音符。</span>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-950/90 border border-emerald-500/40 flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>圣所音符为<strong>虚拟筹码</strong>，仅供游戏内使用，<strong>不可兑换现金、不可变现、不可转让</strong>。</span>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-slate-950/90 border border-rose-500/40 flex items-center gap-2.5">

@@ -580,6 +580,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
               </div>
 
+              {/* Sui zkLogin: prominent Google login suggestion (airdrop) */}
+              <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/50 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-black text-xs text-emerald-200">建议使用 Google 登录</div>
+                  <div className="text-[11px] text-emerald-300/90 leading-relaxed mt-0.5">自动生成你的 Sui 钱包地址，后期可领取社区 SBT 空投。邮箱注册也能玩，但不会生成钱包地址。</div>
+                </div>
+              </div>
+
               {/* Sui zkLogin: Google login (auto-creates a Sui wallet address for future SBT airdrops) */}
               <button
                 type="button"
@@ -602,9 +611,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   <span>使用 Apple 登录</span>
                 </button>
               )}
-              <div className="text-center text-[10px] font-mono text-purple-300/70 -mt-2">
-                {appleConfigured ? 'Google / Apple 登录将自动生成你的 Sui 钱包地址，用于未来空投社区 SBT' : 'Google 登录将自动生成你的 Sui 钱包地址，用于未来空投社区 SBT'}
-              </div>
 
               {/* Mode Selector */}
               <div className="flex p-1 bg-slate-950/80 rounded-xl border border-purple-500/30 gap-1">
