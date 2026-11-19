@@ -1,8 +1,12 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import nodemailer, { type Transporter } from 'nodemailer';
+import jwt from 'jsonwebtoken';
+import jwksClient from 'jwks-rsa';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { Card, Round } from './src/types';
@@ -37,6 +41,86 @@ function getOrCreateServerSecret(): string {
 }
 
 const SERVER_SECRET = getOrCreateServerSecret();
+
+// ---- Sui zkLogin (Google OAuth -> Sui wallet address) ----
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || '';
+const GOOGLE_JWKS = jwksClient({
+  jwksUri: 'https://www.googleapis.com/oauth2/v3/certs',
+  cache: true,
+  rateLimit: true,
+});
+const APPLE_JWKS = jwksClient({
+  jwksUri: 'https://appleid.apple.com/auth/keys',
+  cache: true,
+  rateLimit: true,
+});
+
+type ZkLoginProvider = 'google' | 'apple';
+
+// Verifies an OAuth ID token for the given zkLogin provider: RS256 signature
+// against the provider's JWKS, issuer = the provider, audience = our client
+// ID for that provider (Google OAuth client ID / Apple Services ID).
+function verifyOAuthJwt(token: string, provider: ZkLoginProvider): Promise<{ sub: string; email?: string; name?: string; picture?: string }> {
+  return new Promise((resolve, reject) => {
+    const providerConfig =
+      provider === 'apple'
+        ? { jwks: APPLE_JWKS, issuer: ['https://appleid.apple.com'], audience: APPLE_CLIENT_ID, notConfigured: 'Apple 登录尚未配置' }
+        : { jwks: GOOGLE_JWKS, issuer: ['https://accounts.google.com', 'accounts.google.com'], audience: GOOGLE_CLIENT_ID, notConfigured: 'Google 登录尚未配置' };
+    if (!providerConfig.audience) {
+      reject(new Error(providerConfig.notConfigured));
+      return;
+    }
+    jwt.verify(
+      token,
+      ((header: any, callback: any) => {
+        providerConfig.jwks.getSigningKey(header?.kid ?? null, (err: Error | null, key?: { getPublicKey(): string }) => {
+          if (err || !key) {
+            callback(err || new Error('无对应的签名密钥'));
+            return;
+          }
+          callback(null, key.getPublicKey());
+        });
+      }) as unknown as jwt.GetPublicKeyOrSecret,
+      {
+        algorithms: ['RS256'],
+        issuer: providerConfig.issuer as [string, ...string[]],
+        audience: providerConfig.audience,
+      },
+      (err: Error | null, decoded?: any) => {
+        if (err || !decoded) reject(err || new Error('无效的登录凭证'));
+        else resolve(decoded);
+      },
+    );
+  });
+}
+
+// BN254 field size (same constant @mysten/sui/zklogin uses in poseidonHash).
+// The salt must be a valid field element (< BN254_FIELD_SIZE). A raw
+// HMAC-SHA256 output is a 256-bit number and is >= the field size ~81% of
+// the time, which made jwtToAddress throw "not in the BN254 field" for
+// most users. Reducing mod the field size keeps it deterministic per user.
+// (No user had a stored Sui address yet when this was fixed, so changing
+// the derivation breaks nobody.)
+const BN254_FIELD_SIZE =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
+// Deterministic per-user salt for zkLogin address derivation.
+// Same Google account always gets the same salt (and therefore the same
+// Sui address); the salt is an HMAC of the server secret so it cannot be
+// derived by anyone else.
+function deriveZkLoginSalt(sub: string): string {
+  const hmac = crypto.createHmac('sha256', SERVER_SECRET).update(`zklogin-salt:${sub}`).digest('hex');
+  return (BigInt(`0x${hmac}`) % BN254_FIELD_SIZE).toString();
+}
+
+// @mysten/sui is ESM-only, so it is loaded with a dynamic import here
+// (the server bundle is CJS; a static import would fail at startup).
+async function deriveZkLoginAddress(jwtToken: string, salt: string): Promise<string> {
+  const { jwtToAddress } = await import('@mysten/sui/zklogin');
+  return jwtToAddress(jwtToken, salt);
+}
 
 /**
  * Hashes a plaintext password using scrypt with a 16-byte random salt.
@@ -78,6 +162,8 @@ export interface UserAccount {
   id: string;
   email?: string;
   password?: string; // Stored strictly as scrypt$salt$hash
+  suiAddress?: string; // Sui zkLogin wallet address (Google / Apple OAuth), for future SBT airdrops
+  suiProvider?: ZkLoginProvider; // Which OAuth provider the Sui address came from
   username: string;
   nickname: string;
   avatar: string;
@@ -95,6 +181,12 @@ export interface UserAccount {
 function sanitizeUser(user: UserAccount): Omit<UserAccount, 'password'> {
   const { password: _removed, ...safeUser } = user;
   return safeUser;
+}
+
+// 注册用户判定：只有绑定了邮箱的账号才算注册用户；
+// 未注册的匿名账号（无 email）一律不得建号、匹配或进房。
+function isRegisteredUser(u: UserAccount | undefined): boolean {
+  return !!u && !!u.email;
 }
 
 // In-Memory Database Store backed by JSON file
@@ -1111,44 +1203,265 @@ app.get('/api/online-stats', (req, res) => {
   });
 });
 
+// REST API Bilibili room song audio (audio-only player; no video embed).
+// Resolves a fresh signed audio URL via Bilibili playurl. The URL expires
+// after ~2h, so the client fetches it on every room entry; never cached.
+// Only the fixed playurl endpoint is ever called (no arbitrary URLs).
+const BILIBILI_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+app.get('/api/bilibili-audio', async (req, res) => {
+  const bvid = String(req.query.bvid ?? '');
+  const cidRaw = String(req.query.cid ?? '');
+  if (!/^BV[0-9A-Za-z]{10}$/.test(bvid) || !/^\d+$/.test(cidRaw)) {
+    return res.status(400).json({ error: 'invalid_params' });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const upstream = await fetch(
+      `https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cidRaw}&qn=64&fnver=0&fnval=16&fourk=1`,
+      {
+        signal: controller.signal,
+        headers: { 'User-Agent': BILIBILI_UA, 'Referer': 'https://www.bilibili.com/' },
+      },
+    );
+    const data: any = await upstream.json();
+    const audios: any[] | undefined = data?.data?.dash?.audio;
+    if (data?.code !== 0 || !Array.isArray(audios) || audios.length === 0) {
+      console.warn(`[bilibili-audio] bvid=${bvid} cid=${cidRaw} upstream code=${data?.code} audio=0`);
+      return res.status(502).json({ error: 'audio_unavailable' });
+    }
+    const best = audios.reduce((a: any, b: any) => (b.bandwidth > a.bandwidth ? b : a));
+    const out: { audioUrl: string; duration?: number } = { audioUrl: best.baseUrl };
+    if (typeof data.data.dash.duration === 'number') out.duration = data.data.dash.duration;
+    return res.json(out);
+  } catch (err) {
+    console.warn(`[bilibili-audio] bvid=${bvid} cid=${cidRaw} error=${err instanceof Error ? err.message : 'unknown'}`);
+    return res.status(502).json({ error: 'audio_unavailable' });
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 // REST API Cloud User Account Authentication & Persistence
 app.post('/api/user/auth', (req, res) => {
   const { userId, nickname, avatar, email } = req.body;
-  let user: UserAccount | undefined;
+  const user = userId ? userStore.get(userId) : undefined;
 
-  if (userId && userStore.has(userId)) {
-    user = userStore.get(userId)!;
-    if (nickname) user.nickname = nickname;
-    if (avatar) user.avatar = avatar;
-    if (email && !user.email) user.email = email;
-    user.updatedAt = Date.now();
-  } else {
-    const newId = userId || `jj_user_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
-    user = {
-      id: newId,
-      email: email || undefined,
-      username: nickname || `JM_${Math.floor(1000 + Math.random() * 9000)}`,
-      nickname: nickname || `圣所乐迷_${Math.floor(1000 + Math.random() * 9000)}`,
-      avatar: avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      chips: 130700,
-      level: 1,
-      exp: 0,
-      wins: 0,
-      losses: 0,
-      handsPlayed: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    userStore.set(user.id, user);
+  // 不再自动建匿名号：只有已注册（绑定邮箱）的账号才能认证
+  if (!isRegisteredUser(user)) {
+    return res.status(401).json({ success: false, code: 'NEED_REGISTER', message: '请先注册或登录账号' });
   }
+
+  if (nickname) user.nickname = nickname;
+  if (avatar) user.avatar = avatar;
+  if (email && !user.email) user.email = email;
+  user.updatedAt = Date.now();
 
   saveDatabase();
   res.json({ success: true, user: sanitizeUser(user), authToken: signUserToken(user.id) });
 });
 
 // Email Registration Endpoint (Salted scrypt password hash)
+// ---------------------------------------------------------------------------
+// Email verification for registration (SMTP via nodemailer).
+// Enabled only when SMTP_HOST / SMTP_USER / SMTP_PASS are all configured;
+// otherwise registration keeps its previous behaviour (no code required).
+// ---------------------------------------------------------------------------
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 587;
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_FROM = process.env.SMTP_FROM || 'Final Sanctuary 圣所';
+const emailVerificationEnabled = Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
+
+let mailTransporter: Transporter | null = null;
+function getMailTransporter(): Transporter | null {
+  if (!emailVerificationEnabled) return null;
+  if (!mailTransporter) {
+    mailTransporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+  }
+  return mailTransporter;
+}
+
+interface VerificationCodeEntry {
+  code: string;
+  expiresAt: number;
+}
+// In-memory store: email (lowercased) -> { code, expiresAt }. 10-minute TTL.
+const verificationCodes = new Map<string, VerificationCodeEntry>();
+const CODE_TTL_MS = 10 * 60 * 1000;
+
+// Rate-limit bookkeeping: key -> timestamps of recent sends.
+const sendCodeAttempts = new Map<string, number[]>();
+function checkSendCodeLimit(key: string, windowMs: number, max: number): boolean {
+  const now = Date.now();
+  const recent = (sendCodeAttempts.get(key) || []).filter((t) => now - t < windowMs);
+  if (recent.length >= max) return false;
+  recent.push(now);
+  sendCodeAttempts.set(key, recent);
+  return true;
+}
+
+// Best-effort client IP (behind Nginx, X-Forwarded-For carries the real IP).
+function getClientIp(req: express.Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+// Periodically purge expired codes so the in-memory map stays bounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, entry] of verificationCodes) {
+    if (now > entry.expiresAt) verificationCodes.delete(email);
+  }
+}, CODE_TTL_MS).unref();
+
+// Whether email verification is enabled (client uses this to show/hide the code field).
+app.get('/api/user/verification-status', (_req, res) => {
+  res.json({ enabled: emailVerificationEnabled });
+});
+
+// ---- Sui zkLogin endpoints ----
+
+// Sui zkLogin config. The Google client ID is public (it appears in the
+// OAuth URL), so the client fetches it here instead of baking it into the
+// JS bundle at build time.
+app.get('/api/zklogin/config', (_req, res) => {
+  res.json({
+    google: { configured: !!GOOGLE_CLIENT_ID, clientId: GOOGLE_CLIENT_ID || '' },
+    apple: { configured: !!APPLE_CLIENT_ID, clientId: APPLE_CLIENT_ID || '' },
+  });
+});
+
+// Sui zkLogin salt: verifies the Google JWT, then returns this user's salt.
+app.post('/api/zklogin/salt', async (req, res) => {
+  try {
+    const { jwt: token, provider = 'google' } = req.body || {};
+    if (!token) return res.status(400).json({ success: false, message: '缺少登录凭证' });
+    if (provider !== 'google' && provider !== 'apple') return res.status(400).json({ success: false, message: '不支持的登录方式' });
+    if (provider === 'apple' && !APPLE_CLIENT_ID) return res.status(503).json({ success: false, message: 'Apple 登录尚未配置' });
+    if (provider === 'google' && !GOOGLE_CLIENT_ID) return res.status(503).json({ success: false, message: 'Google 登录尚未配置' });
+    const decoded = await verifyOAuthJwt(token, provider);
+    if (!decoded?.sub) return res.status(401).json({ success: false, message: '无效的登录凭证' });
+    res.json({ success: true, salt: deriveZkLoginSalt(decoded.sub) });
+  } catch (e) {
+    res.status(401).json({ success: false, message: '登录凭证验证失败，请重新登录' });
+  }
+});
+
+// Sui zkLogin link: verifies the Google JWT, derives the Sui address and
+// stores it on the account (creates the account on first Google login).
+// The address is re-derived server-side; a client-supplied address is never trusted.
+app.post('/api/zklogin/link', async (req, res) => {
+  try {
+    const { jwt: token, provider = 'google', currentUserId } = req.body || {};
+    if (!token) return res.status(400).json({ success: false, message: '缺少登录凭证' });
+    if (provider !== 'google' && provider !== 'apple') return res.status(400).json({ success: false, message: '不支持的登录方式' });
+    if (provider === 'apple' && !APPLE_CLIENT_ID) return res.status(503).json({ success: false, message: 'Apple 登录尚未配置' });
+    if (provider === 'google' && !GOOGLE_CLIENT_ID) return res.status(503).json({ success: false, message: 'Google 登录尚未配置' });
+    const decoded = await verifyOAuthJwt(token, provider);
+    if (!decoded?.sub || !decoded?.email) return res.status(401).json({ success: false, message: '无效的登录凭证' });
+    const salt = deriveZkLoginSalt(decoded.sub);
+    const suiAddress = await deriveZkLoginAddress(token, salt);
+
+    let user: UserAccount | undefined;
+    if (currentUserId && userStore.has(currentUserId)) {
+      user = userStore.get(currentUserId);
+      if (user && !user.email) user.email = decoded.email;
+    }
+    if (!user) {
+      user = Array.from(userStore.values()).find((u) => u.email === decoded.email);
+    }
+    if (!user) {
+      // Same Sui address already linked (e.g. account created under another email).
+      user = Array.from(userStore.values()).find((u) => u.suiAddress === suiAddress);
+      if (user && !user.email) user.email = decoded.email;
+    }
+    if (!user) {
+      const newId = `jj_user_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
+      user = {
+        id: newId,
+        email: decoded.email,
+        username: `JM_${Math.floor(1000 + Math.random() * 9000)}`,
+        nickname: decoded.name || `圣所乐迷_${Math.floor(1000 + Math.random() * 9000)}`,
+        avatar: decoded.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+        suiAddress,
+        suiProvider: provider,
+        chips: 130700,
+        level: 1,
+        exp: 0,
+        wins: 0,
+        losses: 0,
+        handsPlayed: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      userStore.set(user.id, user);
+    } else {
+      user.suiAddress = suiAddress;
+      user.suiProvider = provider;
+      user.updatedAt = Date.now();
+    }
+    saveDatabase();
+    res.json({ success: true, user: sanitizeUser(user), authToken: signUserToken(user.id) });
+  } catch (e) {
+    res.status(401).json({ success: false, message: '登录凭证验证失败，请重新登录' });
+  }
+});
+
+// Send a 6-digit registration verification code to the given email.
+app.post('/api/user/send-code', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ success: false, message: '请提供有效的电子邮箱地址' });
+  }
+  const normalizedEmail = email.toLowerCase().trim();
+
+  if (!emailVerificationEnabled) {
+    return res.status(503).json({ success: false, message: '邮件服务暂未配置，请稍后再试' });
+  }
+
+  // Rate limits: same email 1/min and 5/hour; same IP 20/hour.
+  if (!checkSendCodeLimit(`email:${normalizedEmail}`, 60 * 1000, 1)) {
+    return res.status(429).json({ success: false, message: '发送过于频繁，请 60 秒后再试' });
+  }
+  if (!checkSendCodeLimit(`email:${normalizedEmail}`, 60 * 60 * 1000, 5)) {
+    return res.status(429).json({ success: false, message: '该邮箱发送次数过多，请稍后再试' });
+  }
+  if (!checkSendCodeLimit(`ip:${getClientIp(req)}`, 60 * 60 * 1000, 20)) {
+    return res.status(429).json({ success: false, message: '发送过于频繁，请稍后再试' });
+  }
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  verificationCodes.set(normalizedEmail, { code, expiresAt: Date.now() + CODE_TTL_MS });
+
+  try {
+    const transporter = getMailTransporter()!;
+    const from = SMTP_FROM.includes('@') ? SMTP_FROM : `"${SMTP_FROM}" <${SMTP_USER}>`;
+    await transporter.sendMail({
+      from,
+      to: normalizedEmail,
+      subject: '【Final Sanctuary】注册验证码',
+      text: `你的 Final Sanctuary 注册验证码是：${code}\n\n该验证码 10 分钟内有效，请尽快完成注册。如非本人操作，请忽略此邮件。`,
+    });
+    return res.json({ success: true, message: '验证码已发送至你的邮箱，请注意查收' });
+  } catch (err) {
+    console.error('[send-code] SMTP 发送失败:', err);
+    return res.status(500).json({ success: false, message: '验证码发送失败，请稍后再试' });
+  }
+});
+
 app.post('/api/user/register', (req, res) => {
-  const { email, password, nickname, avatar, currentUserId } = req.body;
+  const { email, password, nickname, avatar, currentUserId, code } = req.body;
 
   if (!email || !email.includes('@')) {
     return res.status(400).json({ success: false, message: '请提供有效的电子邮箱地址' });
@@ -1163,6 +1476,23 @@ app.post('/api/user/register', (req, res) => {
 
   if (existingWithEmail) {
     return res.status(400).json({ success: false, message: '该邮箱已被注册，请直接使用密码登录' });
+  }
+
+  // Email verification (only when SMTP is configured; otherwise unchanged behaviour).
+  if (emailVerificationEnabled) {
+    const entry = verificationCodes.get(email.toLowerCase());
+    if (!entry) {
+      return res.status(400).json({ success: false, message: '请先获取邮箱验证码' });
+    }
+    if (Date.now() > entry.expiresAt) {
+      verificationCodes.delete(email.toLowerCase());
+      return res.status(400).json({ success: false, message: '验证码已过期，请重新获取' });
+    }
+    if (String(code || '').trim() !== entry.code) {
+      return res.status(400).json({ success: false, message: '验证码错误，请重新输入' });
+    }
+    // One-time use: consume the code on success.
+    verificationCodes.delete(email.toLowerCase());
   }
 
   const hashedPassword = hashPassword(password);
@@ -1358,34 +1688,31 @@ wss.on('connection', (ws: WebSocket) => {
       const parsed = JSON.parse(rawMessage.toString());
       const { type, payload } = parsed;
 
+      // 只有已注册账号能玩牌：未注册会话的玩牌操作一律拒绝
+      const requireRegistered = (): boolean => {
+        if (!isRegisteredUser(session.userId ? userStore.get(session.userId) : undefined)) {
+          ws.send(JSON.stringify({ type: 'ERROR', code: 'NEED_REGISTER', message: '请先注册或登录账号后再玩' }));
+          return false;
+        }
+        return true;
+      };
+
       switch (type) {
         case 'INIT_USER': {
           const uId = payload?.userId || session.id;
-          session.userId = uId;
+          const account = userStore.get(uId);
 
-          let account = userStore.get(uId);
-          if (!account) {
-            account = {
-              id: uId,
-              username: payload?.name || session.name,
-              nickname: payload?.name || session.name,
-              avatar: payload?.avatar || session.avatar,
-              chips: 130700, // Server-authoritative initial grant; ignores any client-passed chips
-              level: 1,
-              exp: 0,
-              wins: 0,
-              losses: 0,
-              handsPlayed: 0,
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            };
-            userStore.set(uId, account);
-          } else {
-            if (payload?.name) account.nickname = payload.name;
-            if (payload?.avatar) account.avatar = payload.avatar;
-            // Authoritative chips: never allow client INIT_USER payload to overwrite server account.chips
-            account.updatedAt = Date.now();
+          // 不再自动建匿名号：只有已注册（绑定邮箱）的账号才能接入
+          if (!isRegisteredUser(account)) {
+            ws.send(JSON.stringify({ type: 'ERROR', code: 'NEED_REGISTER', message: '请先注册或登录账号后再玩' }));
+            break;
           }
+
+          session.userId = uId;
+          if (payload?.name) account.nickname = payload.name;
+          if (payload?.avatar) account.avatar = payload.avatar;
+          // Authoritative chips: never allow client INIT_USER payload to overwrite server account.chips
+          account.updatedAt = Date.now();
 
           saveDatabase();
 
@@ -1462,6 +1789,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'JOIN_MATCHMAKING': {
+          if (!requireRegistered()) break;
           if (payload?.stageId) {
             session.preferredStageId = payload.stageId;
           }
@@ -1491,6 +1819,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'CREATE_ROOM': {
+          if (!requireRegistered()) break;
           const stage = getStageConfig(payload?.stageId);
           session.isReady = false;
           const initialSeat = createSeatFromSession(session, stage.startChips);
@@ -1514,6 +1843,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'JOIN_ROOM': {
+          if (!requireRegistered()) break;
           const targetRoom = rooms.get(payload?.roomId);
           if (!targetRoom) {
             ws.send(JSON.stringify({ type: 'ERROR', message: '未找到该房间或房间已解散' }));
@@ -1634,6 +1964,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'TOGGLE_READY': {
+          if (!requireRegistered()) break;
           if (!session.roomId) break;
           const room = rooms.get(session.roomId);
           if (!room) break;
@@ -1669,6 +2000,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'START_ONLINE_GAME': {
+          if (!requireRegistered()) break;
           const rId = payload?.roomId || session.roomId;
           if (!rId) break;
           const room = rooms.get(rId);
@@ -1680,6 +2012,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'PLAYER_ACTION': {
+          if (!requireRegistered()) break;
           const rId = payload?.roomId || session.roomId;
           if (!rId) break;
           const room = rooms.get(rId);
@@ -1694,6 +2027,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         case 'NEXT_HAND': {
+          if (!requireRegistered()) break;
           const rId = payload?.roomId || session.roomId;
           if (!rId) break;
           const room = rooms.get(rId);

@@ -10,6 +10,7 @@ import {
   Shield,
   User,
   Globe,
+  Home,
   Calendar,
   Coins,
   Swords,
@@ -31,10 +32,16 @@ interface CyberStartScreenProps {
   onStartGame: (stage: AlbumStage, isOnline?: boolean, roomData?: any) => void;
   currentSong?: ConcertSong;
   setCurrentSong?: (song: ConcertSong) => void;
+  /** Incremented by App after a successful OAuth login; opens the profile once. */
+  profileOpenRequest?: number;
+  /** Called after the open request is handled, so it does not fire again. */
+  onProfileOpenRequestHandled?: () => void;
 }
 
 export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
   onStartGame,
+  profileOpenRequest = 0,
+  onProfileOpenRequestHandled,
 }) => {
   const [selectedStage, setSelectedStage] = useState<AlbumStage>(JJ_ALBUM_STAGES[0]);
   const [mainCategory, setMainCategory] = useState<'battle' | 'academy'>('battle');
@@ -45,6 +52,53 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
   const [isAntiGamblingModalOpen, setIsAntiGamblingModalOpen] = useState(false);
   const [onlinePlayers, setOnlinePlayers] = useState(1);
 
+  // 登录门禁：未注册/未登录时点“玩”先弹登录/注册，登录成功后自动继续进场
+  const [pendingGame, setPendingGame] = useState<{ stage: AlbumStage; online: boolean } | null>(null);
+
+  const isLoggedIn = () => {
+    try {
+      return !!localStorage.getItem('jj_user_email');
+    } catch {
+      return false;
+    }
+  };
+
+  const resumePendingGame = () => {
+    if (!pendingGame || !isLoggedIn()) {
+      setPendingGame(null);
+      return;
+    }
+    const { stage, online } = pendingGame;
+    setPendingGame(null);
+    if (online) {
+      setIsLobbyOpen(true);
+    } else {
+      onStartGame(stage);
+    }
+  };
+
+  const handlePlayClick = (stage: AlbumStage, online: boolean) => {
+    setSelectedStage(stage);
+    if (isLoggedIn()) {
+      if (online) setIsLobbyOpen(true);
+      else onStartGame(stage);
+      return;
+    }
+    setPendingGame({ stage, online });
+    setIsProfileOpen(true);
+  };
+
+  const handleProfileClose = () => {
+    setIsProfileOpen(false);
+    resumePendingGame();
+  };
+
+  const handleLoginSuccess = () => {
+    if (!pendingGame) return;
+    setIsProfileOpen(false);
+    resumePendingGame();
+  };
+
   useEffect(() => {
     wsService.connect();
     const unsub = wsService.subscribe((event) => {
@@ -54,6 +108,17 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
     });
     return () => unsub();
   }, []);
+
+  // After an OAuth login (Google / Apple) completes, App asks the launcher
+  // to open the profile (with the new Sui address). The request is a
+  // counter so it fires once; it is cleared after handling so returning to
+  // the launcher later does not reopen the profile.
+  useEffect(() => {
+    if (profileOpenRequest > 0) {
+      setIsProfileOpen(true);
+      onProfileOpenRequestHandled?.();
+    }
+  }, [profileOpenRequest]);
 
   return (
     <div className="w-full h-full bg-[#0a021a] text-white font-sans relative overflow-hidden flex flex-col justify-between items-center select-none p-3 sm:p-5 no-scrollbar">
@@ -86,6 +151,15 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
 
         {/* Right Status Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <a
+            href="https://0xsanctuary.xyz"
+            className="px-2.5 py-1.5 rounded-xl bg-purple-950/80 border border-purple-500/50 hover:border-fuchsia-400 text-purple-200 hover:text-white font-bold text-xs transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0"
+            title="返回主页"
+          >
+            <Home className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span>返回主页</span>
+          </a>
+
           <button
             onClick={() => setIsProfileOpen(true)}
             className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-purple-900/60 to-fuchsia-950/80 border border-amber-500/50 hover:border-amber-400 text-amber-200 font-bold text-xs transition-all cursor-pointer flex items-center gap-1 shadow-[0_0_10px_rgba(245,158,11,0.25)] whitespace-nowrap shrink-0"
@@ -164,7 +238,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
                   <div
                     key={stage.id}
                     onClick={() => setSelectedStage(stage)}
-                    onDoubleClick={() => onStartGame(stage)}
+                    onDoubleClick={() => handlePlayClick(stage, false)}
                     className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer relative backdrop-blur-xl flex flex-col justify-between gap-2.5 shrink-0 ${
                       isSelected
                         ? `bg-gradient-to-b ${stage.themeGradient} ${stage.borderColor} ${stage.borderGlow}`
@@ -207,8 +281,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedStage(stage);
-                          setIsLobbyOpen(true);
+                          handlePlayClick(stage, true);
                         }}
                         className="py-2 px-2.5 rounded-xl font-black text-xs bg-gradient-to-r from-purple-600 via-fuchsia-500 to-amber-500 hover:brightness-110 active:scale-95 text-white shadow-[0_0_12px_rgba(168,85,247,0.6)] transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap"
                       >
@@ -220,7 +293,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onStartGame(stage);
+                          handlePlayClick(stage, false);
                         }}
                         className="py-2 px-2.5 rounded-xl font-black text-xs bg-purple-950/90 border border-purple-600/70 hover:border-fuchsia-400 text-purple-200 hover:text-white active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap"
                       >
@@ -259,7 +332,8 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
       {/* USER PROFILE MODAL */}
       <UserProfileModal
         isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
+        onClose={handleProfileClose}
+        onLoginSuccess={handleLoginSuccess}
       />
 
       {/* GREEN GAMING DISCLAIMER MODAL */}

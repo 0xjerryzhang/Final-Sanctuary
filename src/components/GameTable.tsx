@@ -18,6 +18,9 @@ import {
   Trophy,
   RotateCcw,
   Play,
+  Pause,
+  Volume2,
+  VolumeX,
   HelpCircle,
   Disc,
   ChevronUp,
@@ -37,6 +40,19 @@ import {
   Clock,
 } from 'lucide-react';
 import { wsService } from '../services/websocket';
+
+// Display name for the local (single-player) hero seat: the account nickname
+// if the user set one, otherwise the default. The local game used to hardcode
+// '圣所乐迷', so a nickname changed in the profile centre never showed up
+// in the game or on the settlement screen. Read at session start so the
+// current nickname is picked up.
+const getLocalPlayerName = (): string => {
+  try {
+    return localStorage.getItem('jj_user_nickname') || '圣所乐迷';
+  } catch {
+    return '圣所乐迷';
+  }
+};
 
 interface ChatMessage {
   id: string;
@@ -78,6 +94,341 @@ const ROUND_LABELS: Record<Round, string> = {
   Showdown: '摊牌结算',
 };
 
+/**
+ * Compact audio-only player for a room's featured song, with the room's
+ * full album playlist (local .m4a files, served from /songs/<room>/).
+ * Fetches /playlist_manifest.json once per page load (module-level cache)
+ * and builds the playlist for the current room (roomId). The first track
+ * is the room's featured song (matched by songTitle), then it auto-advances
+ * through the album in order and loops back to the first track. The track
+ * list can be expanded/collapsed; tapping a track plays it.
+ * If the manifest cannot be loaded or the room has no usable tracks, the
+ * player falls back to the previous single-track behaviour (local audioFile
+ * preferred, else the Bilibili /api/bilibili-audio stream) so it never
+ * goes blank. Lives in the persistent game view (not inside the menu
+ * drawer) so the music keeps playing while the drawer is closed. Unmount
+ * pauses and clears the source so audio never leaks into another room.
+ */
+
+interface PlaylistTrack {
+  no: number;
+  name: string;
+  url: string;
+  duration: number;
+}
+
+interface PlaylistManifestAlbum {
+  album: string;
+  room_id: string;
+  tracks: {
+    no: number;
+    name: string;
+    status: string;
+    file: string;
+    duration_s?: number;
+    actual_duration_s?: number;
+  }[];
+}
+
+interface PlaylistManifest {
+  albums: PlaylistManifestAlbum[];
+}
+
+// Fetched once per page load; the manifest is static data (~200KB).
+let playlistManifestPromise: Promise<PlaylistManifest | null> | null = null;
+function fetchPlaylistManifest(): Promise<PlaylistManifest | null> {
+  if (!playlistManifestPromise) {
+    playlistManifestPromise = fetch('/playlist_manifest.json')
+      .then((res) => (res.ok ? (res.json() as Promise<PlaylistManifest>) : null))
+      .catch(() => null);
+  }
+  return playlistManifestPromise;
+}
+
+const BilibiliAudioPlayer: React.FC<{ bvid?: string; cid?: number; audioFile?: string; songTitle: string; roomId?: string }> = ({ bvid, cid, audioFile, songTitle, roomId }) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const progressRef = useRef<HTMLDivElement | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [playlist, setPlaylist] = useState<PlaylistTrack[] | null>(null);
+  const [playlistAlbum, setPlaylistAlbum] = useState('');
+  const [trackIndex, setTrackIndex] = useState(0);
+  const [listOpen, setListOpen] = useState(false);
+  const retriedRef = useRef(false);
+  const aliveRef = useRef(true);
+  const playlistErrorCountRef = useRef(0);
+
+  const loadAudio = async () => {
+    // Local file path never reaches here; API path requires bvid + cid.
+    if (!bvid || !cid) { setUnavailable(true); return; }
+    try {
+      const res = await fetch(`/api/bilibili-audio?bvid=${bvid}&cid=${cid}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!aliveRef.current || !data?.audioUrl) throw new Error('no audioUrl');
+      setAudioUrl(data.audioUrl);
+      if (typeof data.duration === 'number') setDuration(data.duration);
+    } catch {
+      if (!aliveRef.current) return;
+      if (!retriedRef.current) {
+        retriedRef.current = true;
+        setTimeout(() => { if (aliveRef.current) loadAudio(); }, 1500);
+      } else {
+        setUnavailable(true);
+      }
+    }
+  };
+
+  // Resolve the audio source on mount / room change: playlist first
+  // (featured song first, then auto-advance + loop), single-track fallback.
+  useEffect(() => {
+    aliveRef.current = true;
+    retriedRef.current = false;
+    playlistErrorCountRef.current = 0;
+    setAudioUrl(null);
+    setUnavailable(false);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setPlaylist(null);
+    setPlaylistAlbum('');
+    setTrackIndex(0);
+    setListOpen(false);
+    let cancelled = false;
+    fetchPlaylistManifest().then((manifest) => {
+      if (cancelled || !aliveRef.current) return;
+      const album = manifest?.albums?.find((a) => a.room_id === roomId);
+      const tracks: PlaylistTrack[] = (album?.tracks ?? [])
+        .filter((t) => t.status === 'ok')
+        .sort((a, b) => a.no - b.no)
+        .map((t) => ({
+          no: t.no,
+          name: t.name,
+          url: `/${String(t.file).replace(/^public\//, '')}`,
+          duration: t.actual_duration_s ?? t.duration_s ?? 0,
+        }));
+      if (tracks.length > 0) {
+        setPlaylist(tracks);
+        setPlaylistAlbum(album?.album ?? '');
+        const start = Math.max(0, tracks.findIndex((t) => t.name === songTitle));
+        setTrackIndex(start);
+        setAudioUrl(tracks[start].url);
+        if (tracks[start].duration) setDuration(tracks[start].duration);
+        return;
+      }
+      // No usable playlist: fall back to single-track behaviour.
+      if (audioFile) {
+        setAudioUrl(audioFile);
+      } else if (bvid && cid) {
+        loadAudio();
+      } else {
+        setUnavailable(true);
+      }
+    });
+    return () => { aliveRef.current = false; cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bvid, cid, audioFile, roomId, songTitle]);
+
+  // Attach the fresh URL and try autoplay once (may be blocked until a tap).
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !audioUrl) return;
+    audio.src = audioUrl;
+    audio.load();
+    const p = audio.play();
+    if (p) p.catch(() => { /* autoplay blocked: stay paused until user taps play */ });
+  }, [audioUrl]);
+
+  // Stop on unmount (room change) so audio never leaks into another room.
+  useEffect(() => {
+    const audio = audioRef.current;
+    return () => {
+      if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+    };
+  }, []);
+
+  const playTrack = (i: number) => {
+    if (!playlist || !playlist[i]) return;
+    setTrackIndex(i);
+    setAudioUrl(playlist[i].url);
+    if (playlist[i].duration) setDuration(playlist[i].duration);
+    setCurrentTime(0);
+  };
+
+  const onEnded = () => {
+    // Auto-advance through the album; loop back to the first track.
+    if (playlist && playlist.length > 0) {
+      playTrack((trackIndex + 1) % playlist.length);
+    }
+  };
+
+  const onAudioError = () => {
+    if (playlist && playlist.length > 0) {
+      // Playlist mode: skip to the next track; give up only after a full
+      // cycle of failures so one bad file never blanks the player.
+      playlistErrorCountRef.current += 1;
+      if (playlistErrorCountRef.current < playlist.length) {
+        playTrack((trackIndex + 1) % playlist.length);
+        return;
+      }
+      setUnavailable(true);
+      return;
+    }
+    // Local file: no API fallback (Bilibili .m4s does not play on iPad Safari anyway).
+    if (audioFile) { setUnavailable(true); return; }
+    if (!retriedRef.current) { retriedRef.current = true; loadAudio(); }
+    else setUnavailable(true);
+  };
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio || !audioUrl) return;
+    if (audio.paused) {
+      const p = audio.play();
+      if (p) p.catch(() => { /* user gesture required */ });
+    } else {
+      audio.pause();
+    }
+  };
+
+  const toggleMute = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const next = !muted;
+    audio.muted = next;
+    setMuted(next);
+  };
+
+  const onVolumeChange = (v: number) => {
+    const audio = audioRef.current;
+    setVolume(v);
+    if (audio) {
+      audio.volume = v;
+      if (v > 0 && muted) { audio.muted = false; setMuted(false); }
+    }
+  };
+
+  const seek = (e: React.MouseEvent) => {
+    const audio = audioRef.current;
+    const bar = progressRef.current;
+    if (!audio || !bar || !duration) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * duration;
+    setCurrentTime(audio.currentTime);
+  };
+
+  const formatTime = (s: number) => {
+    if (!Number.isFinite(s) || s < 0) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const currentTrackName = playlist ? (playlist[trackIndex]?.name ?? songTitle) : songTitle;
+
+  if (unavailable) {
+    return (
+      <div className="w-full max-w-sm px-3 z-30 shrink-0">
+        <div className="bg-slate-900/95 border border-teal-500/50 rounded-xl px-3 py-2 shadow-md">
+          <span className="text-xs text-slate-400">🎵 {songTitle} · 音频暂不可用</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-sm px-3 z-30 shrink-0">
+      <div className="bg-slate-900/95 border border-teal-500/50 rounded-xl px-2.5 py-2 shadow-md">
+        <audio
+          ref={audioRef}
+          preload="auto"
+          onPlay={() => { setIsPlaying(true); playlistErrorCountRef.current = 0; }}
+          onPause={() => setIsPlaying(false)}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || duration)}
+          onEnded={onEnded}
+          onError={onAudioError}
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={togglePlay}
+            disabled={!audioUrl}
+            className="w-8 h-8 shrink-0 rounded-full bg-teal-400 text-slate-950 flex items-center justify-center hover:bg-teal-300 disabled:opacity-40 cursor-pointer active:scale-95 transition-all"
+            title={isPlaying ? '暂停' : '播放'}
+          >
+            {isPlaying ? <Pause className="w-4 h-4 fill-slate-950" /> : <Play className="w-4 h-4 fill-slate-950" />}
+          </button>
+          <span className="text-xs font-bold text-teal-200 truncate min-w-0 flex-1">🎵 {currentTrackName}</span>
+          <button
+            onClick={toggleMute}
+            className="text-slate-300 hover:text-white cursor-pointer shrink-0"
+            title={muted ? '取消静音' : '静音'}
+          >
+            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={muted ? 0 : volume}
+            onChange={(e) => onVolumeChange(Number(e.target.value))}
+            className="w-16 shrink-0 accent-teal-400"
+            title="音量"
+          />
+          <span className="text-[11px] text-slate-300 tabular-nums shrink-0">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+        </div>
+        <div
+          ref={progressRef}
+          onClick={seek}
+          className="mt-2 h-1.5 rounded-full bg-slate-700 cursor-pointer overflow-hidden"
+          title="点击跳转"
+        >
+          <div
+            className="h-full bg-teal-400 rounded-full"
+            style={{ width: duration ? `${Math.min(100, (currentTime / duration) * 100)}%` : '0%' }}
+          />
+        </div>
+        {playlist && playlist.length > 0 && (
+          <>
+            <button
+              onClick={() => setListOpen(!listOpen)}
+              className="mt-2 w-full flex items-center justify-between text-[11px] text-slate-300 hover:text-white cursor-pointer"
+              title={listOpen ? '收起曲目列表' : '展开曲目列表'}
+            >
+              <span className="truncate">🎵 {playlistAlbum || '歌单'} · {playlist.length} 首 · {trackIndex + 1}/{playlist.length}</span>
+              <span className="shrink-0 flex items-center gap-0.5 ml-2">{listOpen ? '收起' : '曲目列表'} {listOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}</span>
+            </button>
+            {listOpen && (
+              <div className="mt-1 max-h-44 overflow-y-auto rounded-lg bg-slate-800/70 divide-y divide-slate-700/50">
+                {playlist.map((t, i) => (
+                  <button
+                    key={`${t.no}-${t.name}`}
+                    onClick={() => playTrack(i)}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] cursor-pointer ${i === trackIndex ? 'text-teal-200 bg-teal-500/10' : 'text-slate-300 hover:bg-slate-700/60'}`}
+                  >
+                    <span className="w-5 shrink-0 text-right tabular-nums text-slate-400">{t.no}</span>
+                    <span className="flex-1 truncate">{i === trackIndex ? '▶ ' : ''}{t.name}</span>
+                    <span className="shrink-0 tabular-nums text-slate-400">{formatTime(t.duration)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const GameTable: React.FC<GameTableProps> = ({
   currentSong,
   setCurrentSong,
@@ -114,6 +465,56 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [, setBbIndex] = useState(2);
   const [winnerIds, setWinnerIds] = useState<string[]>([]);
   const [winningDescription, setWinningDescription] = useState('');
+
+  // Showdown result for the settlement modal: who won, how much, with what hand
+  const [showdownResult, setShowdownResult] = useState<{
+    winners: Array<{ id: string; name: string; avatar: string; amount: number; handType: string; description: string }>;
+    pot: number;
+  } | null>(null);
+  // Chip-fly animation: chips flying from the pot to the winner seat(s)
+  const [chipFly, setChipFly] = useState<{
+    key: number;
+    startX: number;
+    startY: number;
+    chips: Array<{ id: number; tx: number; ty: number; delay: number; size: number }>;
+  } | null>(null);
+  const tableRef = useRef<HTMLDivElement | null>(null);
+  const potRef = useRef<HTMLDivElement | null>(null);
+
+  // Launch the chip-gather animation: 6 chips per winner fly from the pot
+  // centre to the winner's seat. Seats are found via data-player-id.
+  const triggerChipFly = (winnerIdsList: string[]) => {
+    const tableEl = tableRef.current;
+    const potEl = potRef.current;
+    if (!tableEl || !potEl || winnerIdsList.length === 0) return;
+    const tableRect = tableEl.getBoundingClientRect();
+    const potRect = potEl.getBoundingClientRect();
+    const startX = potRect.left + potRect.width / 2 - tableRect.left;
+    const startY = potRect.top + potRect.height / 2 - tableRect.top;
+    const chips: Array<{ id: number; tx: number; ty: number; delay: number; size: number }> = [];
+    let chipId = 0;
+    winnerIdsList.forEach((wid) => {
+      const seatEl = tableEl.querySelector(`[data-player-id="${wid}"]`);
+      let tx = startX;
+      let ty = startY + 120;
+      if (seatEl) {
+        const r = seatEl.getBoundingClientRect();
+        tx = r.left + r.width / 2 - tableRect.left;
+        ty = r.top + r.height / 2 - tableRect.top;
+      }
+      for (let i = 0; i < 6; i++) {
+        chips.push({
+          id: chipId++,
+          tx: tx + (Math.random() * 36 - 18),
+          ty: ty + (Math.random() * 20 - 10),
+          delay: 0.05 * i + Math.random() * 0.08,
+          size: 14 + Math.floor(Math.random() * 10),
+        });
+      }
+    });
+    setChipFly({ key: Date.now(), startX, startY, chips });
+    setTimeout(() => setChipFly(null), 1400);
+  };
 
   // Multi-round statistics
   const [handCount, setHandCount] = useState(0);
@@ -168,7 +569,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
     const newMsg: ChatMessage = {
       id: Date.now().toString(),
-      senderName: myPlayer?.name || '圣所乐迷',
+      senderName: myPlayer?.name || getLocalPlayerName(),
       avatar: '🎤',
       text: content,
       isUser: true,
@@ -288,7 +689,27 @@ export const GameTable: React.FC<GameTableProps> = ({
       if (mySeat?.handDescription) {
         setUserBestHand(mySeat.handDescription);
       }
-      setShowRoundModal(true);
+      // Build the winner list for the settlement modal + chip animation.
+      const onlineWinners = Array.isArray(srv.winnerIds) ? srv.winnerIds : [];
+      const onlinePot = srv.pot || 0;
+      const onlineShare = onlineWinners.length > 0 ? Math.floor(onlinePot / onlineWinners.length) : 0;
+      const onlineResultWinners = onlineWinners
+        .map((wid: string) => rotatedPlayers.find((p) => p.id === wid))
+        .filter(Boolean)
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          avatar: p.avatar,
+          amount: onlineShare,
+          handType: p.handDescription || srv.winningDescription || '',
+          description: p.handDescription || srv.winningDescription || '',
+        }));
+      if (onlineResultWinners.length > 0) {
+        setShowdownResult({ winners: onlineResultWinners, pot: onlinePot });
+        triggerChipFly(onlineWinners);
+      }
+      // Chips fly to the winner first; the settlement modal opens after.
+      setTimeout(() => setShowRoundModal(true), 1150);
       setEncoreActive(true);
       setTimeout(() => setEncoreActive(false), 2500);
     }
@@ -345,6 +766,27 @@ export const GameTable: React.FC<GameTableProps> = ({
     };
   }, [isOnlineMode]);
 
+  // Local mode: keep the hero seat's displayed name in sync with the account
+  // nickname. The profile modal saves a new nickname and the server replies
+  // USER_UPDATED; without this, a nickname changed mid-session would only
+  // show up after the next resetWholeSession. Online rooms are
+  // server-authoritative (GAME_STATE carries names), so this only touches
+  // the local hero seat.
+  useEffect(() => {
+    if (isOnlineMode) return;
+    const unsubLocalName = wsService.subscribe((event) => {
+      if (event.type === 'USER_UPDATED' && event.data?.name) {
+        const newName = event.data.name as string;
+        setPlayers((prev) =>
+          prev.map((p) => (p.id === 'player' && !p.isBot ? { ...p, name: newName } : p))
+        );
+      }
+    });
+    return () => {
+      unsubLocalName();
+    };
+  }, [isOnlineMode]);
+
   // Countdown ticker for online turn timer
   useEffect(() => {
     if (!isOnlineMode || !turnDeadline || round === 'Waiting' || round === 'Showdown') {
@@ -362,7 +804,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
   const resetWholeSession = () => {
     const initPlayers: Player[] = [
-      { id: 'player', name: '圣所乐迷', avatar: '🎤', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: false, lastAction: '' },
+      { id: 'player', name: getLocalPlayerName(), avatar: '🎤', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: false, lastAction: '' },
       { id: 'jiangnan', name: '江南过客', avatar: '🌂', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
       { id: 'caocao', name: '枭雄曹操', avatar: '⚔️', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
       { id: 'years', name: '千年旅人', avatar: '⏳', chips: START_CHIPS, currentBet: 0, cards: [], isFolded: false, isAllIn: false, isBot: true, lastAction: '' },
@@ -788,14 +1230,25 @@ export const GameTable: React.FC<GameTableProps> = ({
       setUserWins((prev) => prev + 1);
     }
 
-    setPlayers((prev) =>
-      prev.map((p) => (p.id === winner.id ? { ...p, chips: p.chips + pot } : p))
-    );
+    const winAmount = pot;
+    setShowdownResult({
+      winners: [{ id: winner.id, name: winner.name, avatar: winner.avatar, amount: winAmount, handType: '对手弃牌', description: '对手弃牌' }],
+      pot: winAmount,
+    });
     setWinnerIds([winner.id]);
     setWinningDescription('对手弃牌');
     setRound('Showdown');
     setActivePlayerIndex(-1);
-    setShowRoundModal(true);
+
+    // Chips fly from the pot to the winner first; the chips are credited
+    // and the settlement modal opens after the animation lands.
+    triggerChipFly([winner.id]);
+    setTimeout(() => {
+      setPlayers((prev) =>
+        prev.map((p) => (p.id === winner.id ? { ...p, chips: p.chips + winAmount } : p))
+      );
+      setShowRoundModal(true);
+    }, 1150);
 
     setEncoreActive(true);
     setTimeout(() => setEncoreActive(false), 2500);
@@ -894,18 +1347,17 @@ export const GameTable: React.FC<GameTableProps> = ({
     }
 
     const splitShare = Math.floor(pot / winners.length);
-    setPlayers((prev) =>
-      prev.map((p) => {
-        if (winnerIdsList.includes(p.id)) {
-          return {
-            ...p,
-            chips: p.chips + splitShare,
-            handDescription: winners.find((w) => w.player.id === p.id)?.description,
-          };
-        }
-        return p;
-      })
-    );
+    setShowdownResult({
+      winners: winners.map((w) => ({
+        id: w.player.id,
+        name: w.player.name,
+        avatar: w.player.avatar,
+        amount: splitShare,
+        handType: w.handType,
+        description: w.description,
+      })),
+      pot,
+    });
 
     setWinnerIds(winnerIdsList);
     setWinningDescription(winningDesc);
@@ -914,7 +1366,24 @@ export const GameTable: React.FC<GameTableProps> = ({
       setToastMsg(`${w.player.name} · ${w.handType} 赢 ${formatCompactChips(splitShare)}`);
     });
 
-    setShowRoundModal(true);
+    // Chips fly from the pot to the winner seat(s) first; the chips are
+    // credited and the settlement modal opens after the animation lands.
+    triggerChipFly(winnerIdsList);
+    setTimeout(() => {
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (winnerIdsList.includes(p.id)) {
+            return {
+              ...p,
+              chips: p.chips + splitShare,
+              handDescription: winners.find((w) => w.player.id === p.id)?.description,
+            };
+          }
+          return p;
+        })
+      );
+      setShowRoundModal(true);
+    }, 1150);
     setEncoreActive(true);
     setTimeout(() => setEncoreActive(false), 2500);
   };
@@ -1017,6 +1486,11 @@ export const GameTable: React.FC<GameTableProps> = ({
         </div>
       </header>
 
+      {/* Room song audio player: full album playlist from /playlist_manifest.json, local audioFile / Bilibili fallback */}
+      {selectedStage && (selectedStage.audioFile || (selectedStage.bilibiliBvid && selectedStage.bilibiliCid)) && (
+        <BilibiliAudioPlayer bvid={selectedStage.bilibiliBvid} cid={selectedStage.bilibiliCid} audioFile={selectedStage.audioFile} songTitle={selectedStage.featuredSong ?? currentSong.title} roomId={selectedStage.id} />
+      )}
+
       {/* SPECIAL CONCERT LIGHTING FX (Optional toggle from menu) */}
       {laserActive && (
         <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
@@ -1055,6 +1529,7 @@ export const GameTable: React.FC<GameTableProps> = ({
       >
         {/* Main Oval Poker Table Felt */}
         <div
+          ref={tableRef}
           className={`relative w-full flex-1 min-h-0 rounded-[44px] sm:rounded-[80px] border-[4px] ${feltGradient} shadow-[inset_0_0_70px_rgba(0,0,0,0.88),0_10px_36px_rgba(0,0,0,0.8)] flex flex-col justify-between px-2.5 sm:px-6 py-2 sm:py-3.5 overflow-hidden`}
         >
           {/* Outer & Inner Felt Trim Rings */}
@@ -1114,7 +1589,7 @@ export const GameTable: React.FC<GameTableProps> = ({
             {/* CENTER CORE: HIGHLIGHTED POT MODULE DIRECTLY ABOVE COMMUNITY CARDS */}
             <div className="flex flex-col items-center justify-center gap-1.5 sm:gap-2 my-0.5">
               {/* Highlighted Pot Module Above Community Cards */}
-              <div className="relative flex flex-col items-center justify-center">
+              <div ref={potRef} className="relative flex flex-col items-center justify-center">
                 {/* Ambient Golden Backlight Glow */}
                 <div className="absolute -inset-1.5 rounded-full bg-gradient-to-r from-amber-500/25 via-yellow-300/40 to-amber-500/25 blur-md pointer-events-none" />
 
@@ -1308,6 +1783,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                     myPlayer.avatar.startsWith('data:image'));
                 return (
                   <div
+                    data-player-id={myPlayer.id}
                     className={`px-3 py-1.5 rounded-xl border shadow-xl flex items-center gap-2 backdrop-blur-md transition-all whitespace-nowrap ${
                       isMyTurn
                         ? 'bg-slate-900/95 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_18px_rgba(245,158,11,0.35)]'
@@ -1366,6 +1842,22 @@ export const GameTable: React.FC<GameTableProps> = ({
                 );
               })()}
           </div>
+
+          {/* Chip-fly animation: pot chips gather to the winner seat(s) */}
+          {chipFly && (
+            <div className="pointer-events-none absolute inset-0 z-40 overflow-visible">
+              {chipFly.chips.map((c) => (
+                <motion.div
+                  key={`${chipFly.key}-${c.id}`}
+                  initial={{ x: chipFly.startX, y: chipFly.startY, opacity: 0, scale: 0.5 }}
+                  animate={{ x: c.tx, y: c.ty, opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.85, delay: c.delay, ease: 'easeIn' }}
+                  className="absolute left-0 top-0 rounded-full border-2 border-amber-200 bg-gradient-to-br from-amber-300 via-yellow-500 to-amber-700 shadow-[0_0_12px_rgba(251,191,36,0.9)]"
+                  style={{ width: c.size, height: c.size, marginLeft: -c.size / 2, marginTop: -c.size / 2 }}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1624,6 +2116,52 @@ export const GameTable: React.FC<GameTableProps> = ({
                   {winningDescription ? `获胜牌型：${winningDescription}` : '对局结束'}
                 </p>
               </div>
+
+              {/* Winner(s): who won, with what hand, and how much */}
+              {showdownResult && showdownResult.winners.length > 0 && (
+                <div className="space-y-1.5 text-left">
+                  {showdownResult.winners.map((w) => (
+                    <div
+                      key={w.id}
+                      className={`flex items-center gap-2.5 rounded-2xl border px-3 py-2 ${
+                        w.id === 'player'
+                          ? 'bg-amber-400/15 border-amber-400/60'
+                          : 'bg-white/5 border-white/10'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-slate-900 border border-amber-400/50 flex items-center justify-center text-sm shrink-0 overflow-hidden">
+                        {w.avatar && (w.avatar.startsWith('http') || w.avatar.startsWith('data:image')) ? (
+                          <img src={w.avatar} alt={w.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{w.avatar || '🎤'}</span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-black text-white truncate">
+                            {w.id === 'player' ? `${w.name}（你）` : w.name}
+                          </span>
+                          {w.id === 'player' && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[9px] font-black shrink-0">
+                              你赢了
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-amber-300 font-bold truncate">
+                          {w.handType || w.description || '获胜'}
+                        </div>
+                      </div>
+                      <span className="text-sm font-mono font-black text-amber-300 tabular-nums shrink-0">
+                        +{formatCompactChips(w.amount)}
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-slate-400 text-center">
+                    底池 {formatCompactChips(showdownResult.pot)}
+                    {showdownResult.winners.length > 1 ? ` · ${showdownResult.winners.length} 人平分` : ''}
+                  </p>
+                </div>
+              )}
 
               <div className="bg-slate-950 border border-white/10 rounded-2xl p-3 text-left space-y-1.5 text-xs whitespace-nowrap">
                 <div className="flex justify-between items-center text-slate-300">
@@ -2059,6 +2597,7 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
 
   return (
     <div
+      data-player-id={player.id}
       className={`relative select-none shrink-0 z-20 w-auto min-w-[126px] sm:min-w-[152px] rounded-xl border px-2.5 py-1.5 backdrop-blur-md shadow-lg transition-all flex flex-col gap-1 ${
         isFolded
           ? 'bg-slate-950/60 border-slate-800/80 opacity-45'

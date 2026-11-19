@@ -29,6 +29,7 @@ import {
   Ban,
 } from 'lucide-react';
 import { wsService } from '../services/websocket';
+import { beginAppleLogin, beginGoogleLogin, getStoredSuiAddress, getStoredSuiProvider, getZkLoginConfig } from '../services/zklogin';
 import { triggerHaptic } from '../utils/haptics';
 import { iosAudio } from '../utils/iosAudio';
 import { getApiUrl } from '../utils/apiConfig';
@@ -37,11 +38,29 @@ import { formatCompactChips } from '../data/albumStages';
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onLoginSuccess?: () => void;
 }
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
-export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
+// Google "G" logo (inline SVG) for the zkLogin Google sign-in button.
+const GoogleLogo: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className || 'w-4 h-4 shrink-0'} viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.3h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.3-2.1 3.7-5.2 3.7-8.8z" />
+    <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.8-5l-3.9 3C3.3 21.3 7.3 24 12 24z" />
+    <path fill="#FBBC05" d="M5.2 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.7.4-2.4l-3.9-3C.5 8.2 0 10 0 12s.5 3.8 1.3 5.4l3.9-3z" />
+    <path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l3.3-3.2C17.9 1.1 15.2 0 12 0 7.3 0 3.3 2.7 1.3 6.6l3.9 3c.9-2.9 3.6-4.9 6.8-4.9z" />
+  </svg>
+);
+
+// Apple logo (inline SVG) for the zkLogin Apple sign-in button.
+const AppleLogo: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className || 'w-4 h-4 shrink-0'} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+    <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2.088-.196-3.632 1.09-4.6 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.702" />
+  </svg>
+);
+
+export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
   const [authMode, setAuthMode] = useState<'register' | 'login'>('register');
 
   // Account State
@@ -74,9 +93,22 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     }
   });
 
+  // Sui wallet address from zkLogin (Google / Apple login); used for future SBT airdrops.
+  const [suiAddress, setSuiAddress] = useState<string>(() => getStoredSuiAddress());
+  const [suiProvider, setSuiProvider] = useState<string>(() => getStoredSuiProvider());
+
+  // Whether the server has Apple zkLogin configured (Services ID set). The
+  // Apple sign-in buttons only render when this is true, so they stay hidden
+  // until the user enrolls in the Apple Developer Program.
+  const [appleConfigured, setAppleConfigured] = useState(false);
+
   // Form Inputs for Auth
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
+  const [formCode, setFormCode] = useState('');
+  const [verificationEnabled, setVerificationEnabled] = useState(false);
+  const [codeCountdown, setCodeCountdown] = useState(0);
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const [hasAgreedAntiGambling, setHasAgreedAntiGambling] = useState(false);
   const [showTermsDetail, setShowTermsDetail] = useState(false);
 
@@ -93,6 +125,68 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Whether the server requires an email verification code for registration.
+  useEffect(() => {
+    let alive = true;
+    fetch(getApiUrl('/api/user/verification-status'))
+      .then((res) => res.json())
+      .then((json) => {
+        if (alive) setVerificationEnabled(Boolean(json.enabled));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Whether the server has Apple zkLogin configured (Services ID set).
+  useEffect(() => {
+    let alive = true;
+    getZkLoginConfig()
+      .then((config) => {
+        if (alive) setAppleConfigured(Boolean(config.apple?.configured));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 60s resend countdown for the verification code.
+  useEffect(() => {
+    if (codeCountdown <= 0) return;
+    const timer = setTimeout(() => setCodeCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [codeCountdown]);
+
+  // Send the registration verification code to the entered email.
+  const handleSendCode = async () => {
+    if (!formEmail || !formEmail.includes('@')) {
+      setFeedback({ type: 'error', msg: '请先输入正确的电子邮箱格式' });
+      return;
+    }
+    if (codeCountdown > 0 || isSendingCode) return;
+    setIsSendingCode(true);
+    try {
+      const res = await fetch(getApiUrl('/api/user/send-code'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formEmail }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setCodeCountdown(60);
+        setFeedback({ type: 'success', msg: json.message || '验证码已发送至你的邮箱，请注意查收' });
+      } else {
+        setFeedback({ type: 'error', msg: json.message || '验证码发送失败，请稍后再试' });
+      }
+    } catch {
+      setFeedback({ type: 'error', msg: '网络连接异常，请检查网络设置' });
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
 
   const handleDailyCheckin = async () => {
     if (!userId) {
@@ -181,12 +275,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           setChips(typeof json.user.chips === 'number' ? json.user.chips : 10000);
           setWins(json.user.wins || 0);
           setLosses(json.user.losses || 0);
+          if (json.user.suiAddress) setSuiAddress(json.user.suiAddress);
+          if (json.user.suiProvider) setSuiProvider(json.user.suiProvider);
 
           try {
             if (json.user.id) localStorage.setItem('jj_user_id', json.user.id);
             if (json.user.email) localStorage.setItem('jj_user_email', json.user.email);
             if (json.user.nickname) localStorage.setItem('jj_user_nickname', json.user.nickname);
             if (json.user.avatar) localStorage.setItem('jj_user_avatar', json.user.avatar);
+            if (json.user.suiAddress) localStorage.setItem('jj_sui_address', json.user.suiAddress);
+            if (json.user.suiProvider) localStorage.setItem('jj_sui_provider', json.user.suiProvider);
           } catch {}
 
           // Sync WS
@@ -226,6 +324,32 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   };
 
   // Submit Email Register / Login
+  // Sui zkLogin: Google OAuth login. Redirects to Google; Google returns to the
+  // app root and App.tsx finishes the login (derives + stores the Sui address).
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    setFeedback(null);
+    try {
+      await beginGoogleLogin();
+    } catch (e) {
+      setFeedback({ type: 'error', msg: e instanceof Error ? e.message : 'Google 登录启动失败，请稍后再试' });
+      setIsLoading(false);
+    }
+  };
+
+  // Sui zkLogin: Apple OAuth login (same flow as Google; Apple is a
+  // different identity, so it derives a different Sui address).
+  const handleAppleLogin = async () => {
+    setIsLoading(true);
+    setFeedback(null);
+    try {
+      await beginAppleLogin();
+    } catch (e) {
+      setFeedback({ type: 'error', msg: e instanceof Error ? e.message : 'Apple 登录启动失败，请稍后再试' });
+      setIsLoading(false);
+    }
+  };
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
@@ -245,12 +369,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       return;
     }
 
+    if (authMode === 'register' && verificationEnabled && !formCode.trim()) {
+      setFeedback({ type: 'error', msg: '请填写邮箱验证码' });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const endpoint = authMode === 'register' ? '/api/user/register' : '/api/user/login';
       const body = authMode === 'register'
-        ? { email: formEmail, password: formPassword, nickname, avatar, currentUserId: userId }
+        ? { email: formEmail, password: formPassword, nickname, avatar, currentUserId: userId, code: formCode.trim() }
         : { email: formEmail, password: formPassword };
 
       const res = await fetch(getApiUrl(endpoint), {
@@ -269,17 +398,22 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         setChips(typeof json.user.chips === 'number' ? json.user.chips : 10000);
         setWins(json.user.wins || 0);
         setLosses(json.user.losses || 0);
+        if (json.user.suiAddress) setSuiAddress(json.user.suiAddress);
+        if (json.user.suiProvider) setSuiProvider(json.user.suiProvider);
 
         try {
           localStorage.setItem('jj_user_id', json.user.id);
           localStorage.setItem('jj_user_email', json.user.email || formEmail);
           localStorage.setItem('jj_user_nickname', json.user.nickname);
           localStorage.setItem('jj_user_avatar', json.user.avatar);
+          if (json.user.suiAddress) localStorage.setItem('jj_sui_address', json.user.suiAddress);
+          if (json.user.suiProvider) localStorage.setItem('jj_sui_provider', json.user.suiProvider);
         } catch {}
 
         wsService.initUser(json.user.id, json.user.nickname, json.user.avatar, json.user.chips);
 
         setFeedback({ type: 'success', msg: json.message || '验证成功！已接入个人中心' });
+        onLoginSuccess?.();
       } else {
         setFeedback({ type: 'error', msg: json.message || '处理失败，请检查账号信息' });
       }
@@ -324,8 +458,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
   // Logout / Switch Account
   const handleLogout = () => {
     setUserEmail('');
+    setSuiAddress('');
+    setSuiProvider('');
     try {
       localStorage.removeItem('jj_user_email');
+      localStorage.removeItem('jj_sui_address');
+      localStorage.removeItem('jj_sui_provider');
     } catch {}
     setFormEmail('');
     setFormPassword('');
@@ -442,6 +580,32 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
               </div>
 
+              {/* Sui zkLogin: Google login (auto-creates a Sui wallet address for future SBT airdrops) */}
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={isLoading}
+                className="w-full py-3 rounded-xl bg-white hover:bg-gray-100 text-gray-800 font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-[0.98] disabled:opacity-60"
+              >
+                <GoogleLogo />
+                <span>使用 Google 登录</span>
+              </button>
+              {/* Sui zkLogin: Apple login (shown only when Apple is configured) */}
+              {appleConfigured && (
+                <button
+                  type="button"
+                  onClick={handleAppleLogin}
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-xl bg-black hover:bg-zinc-900 text-white font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md active:scale-[0.98] disabled:opacity-60 border border-zinc-700"
+                >
+                  <AppleLogo />
+                  <span>使用 Apple 登录</span>
+                </button>
+              )}
+              <div className="text-center text-[10px] font-mono text-purple-300/70 -mt-2">
+                {appleConfigured ? 'Google / Apple 登录将自动生成你的 Sui 钱包地址，用于未来空投社区 SBT' : 'Google 登录将自动生成你的 Sui 钱包地址，用于未来空投社区 SBT'}
+              </div>
+
               {/* Mode Selector */}
               <div className="flex p-1 bg-slate-950/80 rounded-xl border border-purple-500/30 gap-1">
                 <button
@@ -507,6 +671,35 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                     />
                   </div>
                 </div>
+
+                {/* Email Verification Code (shown only when the server enables it) */}
+                {authMode === 'register' && verificationEnabled && (
+                  <div>
+                    <label className="text-xs font-mono text-purple-300 block mb-1">邮箱验证码 *</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <ShieldCheck className="w-4 h-4 text-purple-400 absolute left-3 top-3" />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={formCode}
+                          onChange={(e) => setFormCode(e.target.value.replace(/\D/g, ''))}
+                          placeholder="6 位数字验证码"
+                          className="w-full bg-slate-950 border border-purple-500/40 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-fuchsia-400 font-mono"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendCode}
+                        disabled={codeCountdown > 0 || isSendingCode}
+                        className="shrink-0 px-3.5 rounded-xl bg-purple-600/80 text-white font-bold text-xs hover:bg-purple-500 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isSendingCode ? '发送中...' : codeCountdown > 0 ? `重新发送 (${codeCountdown}s)` : '发送验证码'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Anti-Gambling Agreement Box (Mandatory for Registration) */}
                 {authMode === 'register' && (
@@ -578,40 +771,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 </button>
               </form>
 
-              {/* Divider & Sign in with Apple (Mandatory for iOS App Store Guidelines Section 4.8) */}
-              <div className="relative my-1 flex items-center justify-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-purple-500/30"></div>
-                </div>
-                <span className="relative bg-[#0e0422] px-3 text-[10px] text-purple-300/80 font-mono">
-                  或使用 iOS 快捷身份认证
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (authMode === 'register' && !hasAgreedAntiGambling) {
-                    setFeedback({ type: 'error', msg: '⚠️ 注册前请先阅读并勾选同意《绿色游戏与严禁赌博公约》！' });
-                    triggerHaptic('warning');
-                    return;
-                  }
-                  setIsLoading(true);
-                  setTimeout(() => {
-                    const appleEmail = 'apple.user@icloud.com';
-                    setUserEmail(appleEmail);
-                    try {
-                      localStorage.setItem('jj_user_email', appleEmail);
-                    } catch {}
-                    setIsLoading(false);
-                    setFeedback({ type: 'success', msg: ' Apple ID 身份认证成功！已成功登录' });
-                  }, 800);
-                }}
-                className="w-full py-3 rounded-xl bg-white text-black font-black text-xs shadow-lg hover:bg-gray-100 transition-all cursor-pointer flex items-center justify-center gap-2 border border-gray-300"
-              >
-                <span className="text-base leading-none"></span>
-                <span>通过 Apple 账号快速登录 (Sign in with Apple)</span>
-              </button>
             </div>
           ) : (
             /* LAYER 2: LOGGED IN -> Unlocks Personal Center (Avatar, Nickname, Stats, Logout) */
@@ -651,6 +810,54 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   </div>
                 </div>
               </div>
+
+              {/* Sui wallet address (zkLogin) — future community SBT airdrops go here */}
+              {suiAddress ? (
+                <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/30 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-bold text-xs text-emerald-200">Sui 钱包地址{suiProvider === 'apple' ? '（Apple）' : suiProvider === 'google' ? '（Google）' : ''}</div>
+                    <div className="text-[11px] font-mono text-emerald-300/80 mt-0.5 truncate">{suiAddress}</div>
+                    <div className="text-[10px] font-mono text-purple-300/70 mt-0.5">未来社区 SBT 将空投到该地址</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        navigator.clipboard.writeText(suiAddress);
+                        setFeedback({ type: 'success', msg: '钱包地址已复制' });
+                      } catch {
+                        setFeedback({ type: 'error', msg: '复制失败，请手动选择复制' });
+                      }
+                    }}
+                    className="px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 font-bold text-xs shrink-0 cursor-pointer"
+                  >
+                    复制
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isLoading}
+                    className="w-full py-3 rounded-xl bg-white hover:bg-gray-100 text-gray-800 font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md disabled:opacity-60"
+                  >
+                    <GoogleLogo />
+                    <span>绑定 Google 钱包</span>
+                  </button>
+                  {appleConfigured && (
+                    <button
+                      type="button"
+                      onClick={handleAppleLogin}
+                      disabled={isLoading}
+                      className="w-full py-3 rounded-xl bg-black hover:bg-zinc-900 text-white font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md disabled:opacity-60 border border-zinc-700"
+                    >
+                      <AppleLogo />
+                      <span>绑定 Apple 钱包</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Daily Sign-In Card (+3,270 Sanctuary Notes) */}
               <div className="p-3.5 rounded-xl bg-gradient-to-r from-purple-900/90 via-fuchsia-950/80 to-slate-950 border border-fuchsia-500/50 flex items-center justify-between shadow-[0_0_15px_rgba(217,70,239,0.2)]">

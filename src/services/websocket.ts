@@ -106,10 +106,10 @@ class WebSocketService {
 
   private autoAuthenticateSession() {
     try {
-      let storedId = localStorage.getItem('jj_user_id') || '';
+      const storedId = localStorage.getItem('jj_user_id') || '';
+      // 未注册不自动建号：无保存账号时不发 INIT_USER，等用户注册/登录后再认证
       if (!storedId) {
-        storedId = `jj_user_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
-        localStorage.setItem('jj_user_id', storedId);
+        return;
       }
       const storedName = localStorage.getItem('jj_user_nickname') || undefined;
       const storedAvatar = localStorage.getItem('jj_user_avatar') || undefined;

@@ -21,6 +21,10 @@ export interface AlbumStage {
   badgeColor: string;    // Badge background color
   textColor: string;     // Text accent color
   icon: string;          // Icon emoji
+  bilibiliBvid?: string; // Bilibili video BV id of the room's featured song
+  bilibiliCid?: number;  // Bilibili video cid for the room's featured song audio
+  audioFile?: string;     // Local audio file (e.g. '/songs/haven_jiangnan.m4a'); preferred over Bilibili stream
+  featuredSong?: string;  // Title of the room's featured song, shown in the room player
 }
 
 /**
@@ -70,6 +74,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-emerald-400 text-slate-950',
     textColor: 'text-emerald-300',
     icon: '🎸',
+    bilibiliBvid: 'BV13tTF6zE2h',
+    bilibiliCid: 39533872282,
+    audioFile: '/songs/music_voyager.m4a',
+    featuredSong: '翅膀',
   },
   {
     id: 'haven_jiangnan',
@@ -89,6 +97,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-teal-400 text-slate-950',
     textColor: 'text-teal-300',
     icon: '🌊',
+    bilibiliBvid: 'BV1Sy4y1R75J',
+    bilibiliCid: 976459232,
+    audioFile: '/songs/haven_jiangnan.m4a',
+    featuredSong: '江南',
   },
   {
     id: 'no89757',
@@ -108,6 +120,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-cyan-400 text-slate-950',
     textColor: 'text-cyan-300',
     icon: '🤖',
+    bilibiliBvid: 'BV18a41167AP',
+    bilibiliCid: 467524068,
+    audioFile: '/songs/no89757.m4a',
+    featuredSong: '一千年以后',
   },
   {
     id: 'caocao',
@@ -127,6 +143,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-amber-400 text-slate-950',
     textColor: 'text-amber-300',
     icon: '⚔️',
+    bilibiliBvid: 'BV1kN411M73n',
+    bilibiliCid: 1330496075,
+    audioFile: '/songs/caocao.m4a',
+    featuredSong: '曹操',
   },
   {
     id: 'west_side',
@@ -146,6 +166,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-rose-400 text-slate-950',
     textColor: 'text-rose-300',
     icon: '🗡️',
+    bilibiliBvid: 'BV1V7411W7if',
+    bilibiliCid: 148235416,
+    audioFile: '/songs/west_side.m4a',
+    featuredSong: '杀手',
   },
   {
     id: 'six_digits',
@@ -165,6 +189,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-orange-400 text-slate-950',
     textColor: 'text-orange-300',
     icon: '🎧',
+    bilibiliBvid: 'BV1dd4y1f7J9',
+    bilibiliCid: 1126385290,
+    audioFile: '/songs/six_digits.m4a',
+    featuredSong: '小酒窝',
   },
   {
     id: 'one_hundred_days',
@@ -184,6 +212,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-sky-400 text-slate-950',
     textColor: 'text-sky-300',
     icon: '🌅',
+    bilibiliBvid: 'BV1Km421s7kX',
+    bilibiliCid: 1520247546,
+    audioFile: '/songs/one_hundred_days.m4a',
+    featuredSong: '第几个100天',
   },
   {
     id: 'she_says',
@@ -203,6 +235,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-pink-400 text-slate-950',
     textColor: 'text-pink-300',
     icon: '🌸',
+    bilibiliBvid: 'BV1qw41147hD',
+    bilibiliCid: 1375030986,
+    audioFile: '/songs/she_says.m4a',
+    featuredSong: '她说',
   },
   {
     id: 'never_learn',
@@ -222,6 +258,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-blue-400 text-slate-950',
     textColor: 'text-blue-300',
     icon: '🎹',
+    bilibiliBvid: 'BV1FW411G7fe',
+    bilibiliCid: 38137384,
+    audioFile: '/songs/never_learn.m4a',
+    featuredSong: '学不会',
   },
   {
     id: 'stories_untold',
@@ -241,6 +281,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-violet-400 text-slate-950',
     textColor: 'text-violet-300',
     icon: '🌟',
+    bilibiliBvid: 'BV14p411f7Ym',
+    bilibiliCid: 38529198,
+    audioFile: '/songs/stories_untold.m4a',
+    featuredSong: '修炼爱情',
   },
   {
     id: 'genesis',
@@ -260,6 +304,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-indigo-400 text-slate-950',
     textColor: 'text-indigo-300',
     icon: '🌍',
+    bilibiliBvid: 'BV1sw411v7YQ',
+    bilibiliCid: 1277549379,
+    audioFile: '/songs/genesis.m4a',
+    featuredSong: '可惜没如果',
   },
   {
     id: 'from_me_to_myself',
@@ -279,6 +327,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-cyan-400 text-slate-950',
     textColor: 'text-cyan-300',
     icon: '🎙️',
+    bilibiliBvid: 'BV1ov4y1i7TZ',
+    bilibiliCid: 951226919,
+    audioFile: '/songs/from_me_to_myself.m4a',
+    featuredSong: '不为谁而作的歌',
   },
   {
     id: 'message_in_a_bottle',
@@ -298,6 +350,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-purple-400 text-slate-950',
     textColor: 'text-purple-300',
     icon: '🌌',
+    bilibiliBvid: 'BV1xeCEYyEjZ',
+    bilibiliCid: 27555137440,
+    audioFile: '/songs/message_in_a_bottle.m4a',
+    featuredSong: '伟大的渺小',
   },
   {
     id: 'drifter_like_you',
@@ -317,6 +373,10 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-fuchsia-400 text-slate-950',
     textColor: 'text-fuchsia-300',
     icon: '⏳',
+    bilibiliBvid: 'BV1qo4y1u7Jk',
+    bilibiliCid: 1150611556,
+    audioFile: '/songs/drifter_like_you.m4a',
+    featuredSong: '交换余生',
   },
   {
     id: 'happian',
@@ -336,5 +396,9 @@ export const JJ_ALBUM_STAGES: AlbumStage[] = [
     badgeColor: 'bg-amber-300 text-slate-950',
     textColor: 'text-amber-200',
     icon: '✨',
+    bilibiliBvid: 'BV11M41157mS',
+    bilibiliCid: 1095052662,
+    audioFile: '/songs/happian.m4a',
+    featuredSong: '愿与愁',
   },
 ];
