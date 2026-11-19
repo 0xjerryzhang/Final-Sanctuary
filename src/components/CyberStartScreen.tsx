@@ -143,7 +143,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
       {/* 2. TOP HUD HEADER BAR */}
       <div className="w-full max-w-5xl flex items-center justify-between gap-2 z-20 pt-0.5 pb-2 border-b border-purple-500/40 shrink-0">
         {/* Left HUD Label */}
-        <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
+        <div className="hidden min-[480px]:flex items-center gap-2 whitespace-nowrap shrink-0">
           <span className="text-xs sm:text-sm font-mono font-black tracking-wider text-purple-200 uppercase drop-shadow-[0_0_8px_rgba(168,85,247,0.8)]">
             FINAL SANCTUARY
           </span>
@@ -157,7 +157,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
             title="返回主页"
           >
             <Home className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span>返回主页</span>
+            <span className="hidden min-[400px]:inline">返回主页</span>
           </a>
 
           <button
@@ -166,7 +166,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
           >
             <Calendar className="w-3.5 h-3.5 text-amber-300 shrink-0" />
             <span>签到</span>
-            <span className="text-[10px] bg-amber-500 text-black px-1 rounded font-black">+3.2K</span>
+            <span className="text-[10px] bg-amber-500 text-black px-1 rounded font-black hidden min-[400px]:inline">+3.2K</span>
           </button>
 
           <button
@@ -196,29 +196,29 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
       {/* 3. CENTER HERO LAUNCHER CARD */}
       <div className="w-full max-w-5xl flex-1 min-h-0 z-30 flex flex-col items-center gap-3 py-2">
         {/* Main Category Switcher (Streamlined Single-Line Proportional Tabs) */}
-        <div className="flex items-center justify-center gap-2 bg-slate-950/95 border border-purple-500/60 p-1.5 rounded-2xl backdrop-blur-xl shadow-[0_0_25px_rgba(168,85,247,0.35)] shrink-0">
+        <div className="w-full max-w-md sm:max-w-none flex items-center justify-center gap-1.5 sm:gap-2 bg-slate-950/95 border border-purple-500/60 p-1.5 rounded-2xl backdrop-blur-xl shadow-[0_0_25px_rgba(168,85,247,0.35)] shrink-0">
           <button
             onClick={() => setMainCategory('battle')}
-            className={`px-5 sm:px-7 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`px-2 sm:px-7 py-2 rounded-xl text-[11px] sm:text-sm font-black transition-all cursor-pointer flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap min-w-0 ${
               mainCategory === 'battle'
                 ? 'bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.8)] border border-purple-300'
                 : 'text-purple-200 hover:text-white hover:bg-white/10'
             }`}
           >
             <Swords className="w-4 h-4 text-amber-300 shrink-0" />
-            <span>巡演实战 · 15专辑场</span>
+            <span className="truncate">巡演实战<span className="hidden min-[420px]:inline"> · 15专辑场</span></span>
           </button>
 
           <button
             onClick={() => setMainCategory('academy')}
-            className={`px-5 sm:px-7 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`px-2 sm:px-7 py-2 rounded-xl text-[11px] sm:text-sm font-black transition-all cursor-pointer flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap min-w-0 ${
               mainCategory === 'academy'
                 ? 'bg-gradient-to-r from-fuchsia-600 via-purple-600 to-indigo-600 text-white shadow-[0_0_20px_rgba(232,121,249,0.8)] border border-fuchsia-300'
                 : 'text-purple-200 hover:text-white hover:bg-white/10'
             }`}
           >
             <GraduationCap className="w-4 h-4 text-fuchsia-300 shrink-0" />
-            <span>德州学院 · 牌型规则</span>
+            <span className="truncate">德州学院<span className="hidden min-[420px]:inline"> · 牌型规则</span></span>
           </button>
         </div>
 
@@ -265,7 +265,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
                     </div>
 
                     {/* Row 2: Blinds & Buy-In Bar (No Wrapping) */}
-                    <div className="flex items-center justify-between gap-2 text-xs font-mono font-bold bg-black/60 border border-purple-500/30 px-3 py-1.5 rounded-xl whitespace-nowrap">
+                    <div className="flex items-center justify-between gap-2 text-xs font-mono font-bold bg-black/60 border border-purple-500/30 px-2 sm:px-3 py-1.5 rounded-xl whitespace-nowrap">
                       <div className="flex items-center gap-1.5 text-purple-200">
                         <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         <span>盲注 <strong className="text-amber-300 font-black">{stage.blindLabel}</strong></span>
@@ -344,7 +344,7 @@ export const CyberStartScreen: React.FC<CyberStartScreenProps> = ({
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-md bg-[#0e0422] border-2 border-rose-500/60 rounded-3xl p-5 text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] relative flex flex-col gap-3.5 overflow-hidden"
+              className="w-full max-w-md bg-[#0e0422] border-2 border-rose-500/60 rounded-3xl p-5 text-white shadow-[0_0_50px_rgba(225,29,72,0.4)] relative flex flex-col gap-3.5 overflow-y-auto max-h-[88dvh]"
             >
               <button
                 onClick={() => setIsAntiGamblingModalOpen(false)}

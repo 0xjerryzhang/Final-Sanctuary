@@ -568,7 +568,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="relative w-full max-w-md bg-[#0e0422] border-2 border-purple-500/60 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.5)] overflow-hidden flex flex-col text-white max-h-[92vh]"
+          className="relative w-full max-w-md bg-[#0e0422] border-2 border-purple-500/60 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.5)] overflow-hidden flex flex-col text-white max-h-[92dvh]"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-purple-500/30 bg-slate-950/80">
@@ -840,12 +840,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             /* LAYER 2: LOGGED IN -> Unlocks Personal Center (Avatar, Nickname, Stats, Logout) */
             <div className="p-6 flex flex-col gap-4 overflow-y-auto">
               {/* Account Card & Custom Avatar Upload */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/80 to-slate-950 border border-purple-500/40 flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-purple-950/80 to-slate-950 border border-purple-500/40 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                   {/* Interactive Custom Avatar Upload Circle */}
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="relative group w-14 h-14 rounded-full overflow-hidden border-2 border-fuchsia-400 shadow-[0_0_15px_rgba(232,121,249,0.6)] cursor-pointer shrink-0"
+                    className="relative group w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-fuchsia-400 shadow-[0_0_15px_rgba(232,121,249,0.6)] cursor-pointer shrink-0"
                   >
                     <img src={avatar} alt={nickname} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-[9px] font-bold text-white">
@@ -854,21 +854,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                     </div>
                   </div>
 
-                  <div>
-                    <div className="font-black text-base text-white flex items-center gap-1.5">
-                      <span>{nickname}</span>
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <div className="min-w-0">
+                    <div className="font-black text-base text-white flex items-center gap-1.5 min-w-0">
+                      <span className="truncate">{nickname}</span>
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                     </div>
-                    <div className="text-[10px] font-mono text-emerald-300 mt-0.5 flex items-center gap-1">
-                      <span>📧 {userEmail}</span>
+                    <div className="text-[10px] font-mono text-emerald-300 mt-0.5 flex items-center gap-1 truncate min-w-0">
+                      <span className="truncate">📧 {userEmail}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-purple-400">ID: {savedUsername || userId || '已连线'}</div>
+                    <div className="text-[10px] font-mono text-purple-400 truncate">ID: {savedUsername || userId || '已连线'}</div>
                   </div>
                 </div>
 
                 <div className="text-right shrink-0 whitespace-nowrap">
                   <div className="text-xs font-mono text-purple-300">圣所音符</div>
-                  <div className="text-base font-black text-amber-300 flex items-center justify-end gap-1">
+                  <div className="text-sm sm:text-base font-black text-amber-300 flex items-center justify-end gap-1">
                     <Music className="w-4 h-4 text-fuchsia-400 shrink-0" />
                     <span>{formatCompactChips(chips ?? 0)}</span>
                   </div>
@@ -925,18 +925,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
               {/* Daily Sign-In Card (+3,270 Sanctuary Notes) */}
               <div className="p-3.5 rounded-xl bg-gradient-to-r from-purple-900/90 via-fuchsia-950/80 to-slate-950 border border-fuchsia-500/50 flex items-center justify-between shadow-[0_0_15px_rgba(217,70,239,0.2)]">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-9 h-9 rounded-xl bg-fuchsia-500/20 border border-fuchsia-400/40 flex items-center justify-center shrink-0">
                     <Calendar className="w-5 h-5 text-fuchsia-300" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-black text-xs text-white flex items-center gap-1.5">
                       <span>每日领签到礼</span>
                       <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap shrink-0">
                         +3,270
                       </span>
                     </div>
-                    <div className="text-[10px] font-mono text-purple-300/80 mt-0.5 whitespace-nowrap">
+                    <div className="text-[10px] font-mono text-purple-300/80 mt-0.5 truncate">
                       每天登录免费领取
                     </div>
                   </div>
@@ -946,7 +946,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   type="button"
                   disabled={hasCheckedInToday || isLoading}
                   onClick={handleDailyCheckin}
-                  className={`px-3.5 py-2 rounded-xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                  className={`px-2.5 sm:px-3.5 py-2 rounded-xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
                     hasCheckedInToday
                       ? 'bg-purple-950 border border-purple-700/60 text-purple-400 cursor-not-allowed'
                       : 'bg-gradient-to-r from-amber-500 via-fuchsia-500 to-purple-600 hover:brightness-110 text-white shadow-[0_0_12px_rgba(245,158,11,0.6)] active:scale-95'

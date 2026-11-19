@@ -198,7 +198,7 @@ export const MatchmakingLobbyModal: React.FC<MatchmakingLobbyModalProps> = ({
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
-          className="relative w-full max-w-3xl bg-[#0e0422] border-2 border-purple-500/60 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.5)] overflow-hidden flex flex-col text-white max-h-[90vh]"
+          className="relative w-full max-w-3xl bg-[#0e0422] border-2 border-purple-500/60 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.5)] overflow-hidden flex flex-col text-white max-h-[90dvh]"
         >
           {/* HEADER */}
           <div className="flex items-center justify-between gap-2 px-5 py-3.5 border-b border-purple-500/30 bg-slate-950/80 shrink-0">
@@ -538,7 +538,7 @@ export const MatchmakingLobbyModal: React.FC<MatchmakingLobbyModalProps> = ({
           {/* CREATE ROOM MODAL OVERLAY */}
           {showCreateModal && (
             <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-5">
-              <div className="w-full max-w-sm bg-[#12052c] border-2 border-fuchsia-500/60 rounded-3xl p-5 flex flex-col gap-3.5 text-white shadow-2xl">
+              <div className="w-full max-w-sm bg-[#12052c] border-2 border-fuchsia-500/60 rounded-3xl p-5 flex flex-col gap-3.5 text-white shadow-2xl max-h-[88dvh] overflow-y-auto">
                 <div className="flex items-center justify-between border-b border-purple-500/30 pb-2.5">
                   <h3 className="font-black text-sm flex items-center gap-1.5 whitespace-nowrap">
                     <Plus className="w-4 h-4 text-fuchsia-400 shrink-0" />

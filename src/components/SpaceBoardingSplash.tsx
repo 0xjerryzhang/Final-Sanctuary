@@ -68,7 +68,7 @@ export const SpaceBoardingSplash: React.FC<SpaceBoardingSplashProps> = ({ onEnte
           </span>
         </div>
 
-        <div className="bg-white text-slate-900 px-2.5 py-1 rounded-lg shadow-lg flex items-center gap-1.5 border border-slate-300 whitespace-nowrap shrink-0">
+        <div className="bg-white text-slate-900 px-2.5 py-1 rounded-lg shadow-lg hidden min-[380px]:flex items-center gap-1.5 border border-slate-300 whitespace-nowrap shrink-0">
           <div className="bg-blue-900 text-white p-0.5 rounded shrink-0">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 fill-blue-900" />
           </div>
@@ -124,7 +124,7 @@ export const SpaceBoardingSplash: React.FC<SpaceBoardingSplashProps> = ({ onEnte
             </div>
           </motion.button>
 
-          <h1 className="text-2xl sm:text-4xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-200 via-white to-fuchsia-300 mb-2 font-display whitespace-nowrap">
+          <h1 className="text-xl min-[380px]:text-2xl sm:text-4xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-200 via-white to-fuchsia-300 mb-2 font-display whitespace-nowrap">
             FINAL SANCTUARY
           </h1>
 

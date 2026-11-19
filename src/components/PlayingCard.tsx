@@ -72,7 +72,7 @@ export const PlayingCard: React.FC<PlayingCardProps> = ({
       showBottomRank: false,
     },
     md: {
-      box: 'w-11 h-16 sm:w-14 sm:h-20 rounded-lg sm:rounded-xl p-1.5 sm:p-2',
+      box: 'w-9 h-13 sm:w-14 sm:h-20 rounded-lg sm:rounded-xl p-1 sm:p-2',
       topVal: 'text-sm sm:text-base font-black leading-none',
       centerSuit: 'text-2xl sm:text-3xl leading-none',
       centerIcon: 'w-4 h-4 sm:w-5 sm:h-5',

@@ -379,10 +379,10 @@ const BilibiliAudioPlayer: React.FC<{ bvid?: string; cid?: number; audioFile?: s
             step={0.05}
             value={muted ? 0 : volume}
             onChange={(e) => onVolumeChange(Number(e.target.value))}
-            className="w-16 shrink-0 accent-teal-400"
+            className="w-12 sm:w-16 shrink-0 accent-teal-400"
             title="音量"
           />
-          <span className="text-[11px] text-slate-300 tabular-nums shrink-0">
+          <span className="text-[11px] text-slate-300 tabular-nums shrink-0 hidden min-[360px]:inline">
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
         </div>
@@ -1434,7 +1434,7 @@ export const GameTable: React.FC<GameTableProps> = ({
       id="main-poker-stage"
     >
       {/* 1. TOP HUD BAR */}
-      <header className="w-full max-w-4xl px-3 pt-2 pb-1.5 flex items-center justify-between gap-2 z-40 shrink-0">
+      <header className="w-full max-w-4xl px-2 sm:px-3 pt-2 pb-1.5 flex items-center justify-between gap-2 z-40 shrink-0">
         {/* Left: Exit Button */}
         <button
           onClick={onReturnToLauncher}
@@ -1442,16 +1442,16 @@ export const GameTable: React.FC<GameTableProps> = ({
           title="返回大厅"
         >
           <LogOut className="w-3.5 h-3.5 text-purple-300 shrink-0" />
-          <span>大厅</span>
+          <span className="hidden min-[380px]:inline">大厅</span>
         </button>
 
         {/* Center: Stage & Blinds Info */}
         <div className="bg-slate-900/95 border border-purple-500/50 px-3.5 py-1 rounded-xl shadow-md flex items-center justify-center gap-2 whitespace-nowrap min-w-0">
           {isOnlineMode && <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-          <span className="text-xs sm:text-sm font-black text-white truncate">
+          <span className="text-xs sm:text-sm font-black text-white truncate hidden min-[380px]:inline">
             {selectedStage ? selectedStage.name : '《乐行者》'}
           </span>
-          <span className="text-slate-500">·</span>
+          <span className="text-slate-500 hidden min-[380px]:inline">·</span>
           <span className="text-xs font-mono font-black text-amber-300 tabular-nums shrink-0">
             盲注 {blindDisplay}
           </span>
@@ -1538,10 +1538,10 @@ export const GameTable: React.FC<GameTableProps> = ({
 
           {/* TOP RAIL STATUS PILL */}
           <div className="relative z-20 flex items-center justify-center w-full shrink-0">
-            <div className="bg-slate-950/85 border border-white/15 px-3 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono text-slate-200 whitespace-nowrap shadow-md flex items-center gap-1.5">
+            <div className="bg-slate-950/85 border border-white/15 px-3 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono text-slate-200 whitespace-nowrap shadow-md flex items-center gap-1.5 max-w-full overflow-hidden">
               <span className="text-amber-300 font-bold shrink-0">{ROUND_LABELS[round]}</span>
               <span className="text-slate-500">·</span>
-              <span className="text-slate-300">{toastMsg}</span>
+              <span className="text-slate-300 truncate min-w-0">{toastMsg}</span>
             </div>
           </div>
 
@@ -1564,7 +1564,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                   selectedStage={selectedStage}
                 />
               ) : (
-                <div className="w-28" />
+                <div className="w-[104px] sm:w-28" />
               )}
 
               {players[3] ? (
@@ -1582,7 +1582,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                   selectedStage={selectedStage}
                 />
               ) : (
-                <div className="w-28" />
+                <div className="w-[104px] sm:w-28" />
               )}
             </div>
 
@@ -1618,14 +1618,14 @@ export const GameTable: React.FC<GameTableProps> = ({
               </div>
 
               {/* 5 Community Cards Board */}
-              <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 px-2.5 py-1.5 rounded-2xl bg-black/45 border border-amber-400/25 shadow-[inset_0_2px_12px_rgba(0,0,0,0.85)]">
+              <div className="flex items-center justify-center gap-1 sm:gap-2.5 px-1.5 sm:px-2.5 py-1.5 rounded-2xl bg-black/45 border border-amber-400/25 shadow-[inset_0_2px_12px_rgba(0,0,0,0.85)]">
                 {[0, 1, 2, 3, 4].map((slotIdx) => {
                   const card = communityCards[slotIdx];
                   if (!card) {
                     return (
                       <div
                         key={slotIdx}
-                        className="w-11 h-16 sm:w-14 sm:h-20 rounded-lg sm:rounded-xl border border-dashed border-white/20 bg-white/[0.03] flex items-center justify-center shrink-0"
+                        className="w-9 h-13 sm:w-14 sm:h-20 rounded-lg sm:rounded-xl border border-dashed border-white/20 bg-white/[0.03] flex items-center justify-center shrink-0"
                       >
                         <span className="text-[9px] font-mono text-white/25 select-none">
                           {slotIdx < 3 ? 'FLOP' : slotIdx === 3 ? 'TURN' : 'RIVER'}
@@ -1676,7 +1676,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                   selectedStage={selectedStage}
                 />
               ) : (
-                <div className="w-28" />
+                <div className="w-[104px] sm:w-28" />
               )}
 
               {players[4] ? (
@@ -1694,7 +1694,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                   selectedStage={selectedStage}
                 />
               ) : (
-                <div className="w-28" />
+                <div className="w-[104px] sm:w-28" />
               )}
             </div>
           </div>
@@ -1784,14 +1784,14 @@ export const GameTable: React.FC<GameTableProps> = ({
                 return (
                   <div
                     data-player-id={myPlayer.id}
-                    className={`px-3 py-1.5 rounded-xl border shadow-xl flex items-center gap-2 backdrop-blur-md transition-all whitespace-nowrap ${
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-xl border shadow-xl flex items-center gap-2 backdrop-blur-md transition-all whitespace-nowrap ${
                       isMyTurn
                         ? 'bg-slate-900/95 border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_18px_rgba(245,158,11,0.35)]'
                         : 'bg-slate-950/90 border-slate-700/80'
                     }`}
                   >
                     {/* Avatar Frame Inside Box */}
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-900 border border-amber-400/70 flex items-center justify-center text-xs sm:text-sm shrink-0 overflow-hidden shadow-inner">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-slate-900 border border-amber-400/70 flex items-center justify-center text-xs sm:text-sm shrink-0 overflow-hidden shadow-inner">
                       {isAvatarImage ? (
                         <img
                           src={myPlayer.avatar}
@@ -2014,7 +2014,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 10 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-950 border-2 border-amber-500/60 rounded-3xl p-5 max-w-sm w-full text-left space-y-3.5 shadow-2xl"
+              className="bg-slate-950 border-2 border-amber-500/60 rounded-3xl p-5 max-w-sm w-full text-left space-y-3.5 shadow-2xl max-h-[85dvh] overflow-y-auto allow-scroll"
             >
               <div className="flex justify-between items-center border-b border-amber-500/30 pb-2">
                 <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2 whitespace-nowrap">
@@ -2104,7 +2104,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               initial={{ scale: 0.85, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.85, y: 15 }}
-              className="bg-slate-900 border border-amber-500/50 rounded-3xl p-5 max-w-sm w-full text-center space-y-3 shadow-2xl"
+              className="bg-slate-900 border border-amber-500/50 rounded-3xl p-5 max-w-sm w-full text-center space-y-3 shadow-2xl max-h-[88dvh] overflow-y-auto allow-scroll"
             >
               <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center mx-auto text-amber-400">
                 <Trophy className="w-6 h-6" />
@@ -2230,7 +2230,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               initial={{ scale: 0.9, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 15 }}
-              className="bg-slate-900 border border-amber-500/50 rounded-3xl p-5 max-w-sm w-full text-center space-y-3 shadow-2xl"
+              className="bg-slate-900 border border-amber-500/50 rounded-3xl p-5 max-w-sm w-full text-center space-y-3 shadow-2xl max-h-[88dvh] overflow-y-auto allow-scroll"
             >
               <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center mx-auto text-amber-400">
                 <Award className="w-6 h-6" />
@@ -2598,7 +2598,7 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
   return (
     <div
       data-player-id={player.id}
-      className={`relative select-none shrink-0 z-20 w-auto min-w-[126px] sm:min-w-[152px] rounded-xl border px-2.5 py-1.5 backdrop-blur-md shadow-lg transition-all flex flex-col gap-1 ${
+      className={`relative select-none shrink-0 z-20 w-auto min-w-[104px] sm:min-w-[152px] rounded-xl border px-2 py-1 sm:px-2.5 sm:py-1.5 backdrop-blur-md shadow-lg transition-all flex flex-col gap-1 ${
         isFolded
           ? 'bg-slate-950/60 border-slate-800/80 opacity-45'
           : isWinner
@@ -2609,10 +2609,10 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
       }`}
     >
       {/* Main Unified Row: Avatar Frame + Position/Name + Chip Stack (All Fully Visible) */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Avatar Frame Inside Box */}
         <div
-          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-900 border flex items-center justify-center text-xs sm:text-sm shrink-0 overflow-hidden ${
+          className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-slate-900 border flex items-center justify-center text-xs sm:text-sm shrink-0 overflow-hidden ${
             isFolded
               ? 'border-slate-700 grayscale'
               : isWinner || isActive
@@ -2636,7 +2636,7 @@ const TablePlayerSeat: React.FC<TablePlayerSeatProps> = ({
             >
               {posInfo.code}
             </span>
-            <span className="text-[11px] sm:text-xs font-bold text-white whitespace-nowrap">
+            <span className="text-[10px] sm:text-xs font-bold text-white whitespace-nowrap">
               {player.name}
             </span>
           </div>
