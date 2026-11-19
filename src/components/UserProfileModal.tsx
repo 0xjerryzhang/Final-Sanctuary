@@ -932,12 +932,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                   <div>
                     <div className="font-black text-xs text-white flex items-center gap-1.5">
                       <span>每日领签到礼</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        +3,270 音符
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap shrink-0">
+                        +3,270
                       </span>
                     </div>
-                    <div className="text-[10px] font-mono text-purple-300/80 mt-0.5">
-                      每天登录即可免费领取 3,270 圣所音符
+                    <div className="text-[10px] font-mono text-purple-300/80 mt-0.5 whitespace-nowrap">
+                      每天登录免费领取
                     </div>
                   </div>
                 </div>
@@ -966,22 +966,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                 </button>
               </div>
 
-              {/* Recharge Entrance Disabled / Anti-gambling Notice */}
-              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-rose-500/30 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-xs text-rose-200 flex items-center gap-1.5">
-                    <Ban className="w-4 h-4 text-rose-400" />
-                    <span>充值中心 (暂不开放)</span>
-                  </div>
-                  <div className="text-[10px] font-mono text-purple-300/80 mt-0.5">
-                    绿色游戏倡导，全场暂不设立任何充值及变现入口
-                  </div>
-                </div>
-
-                <span className="px-2.5 py-1 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 text-[10px] font-mono font-bold shrink-0">
-                  纯免费体验
-                </span>
-              </div>
 
               {/* Custom Avatar Upload Button */}
               <div className="p-3.5 rounded-xl bg-slate-950/80 border border-purple-500/30 flex items-center justify-between">
